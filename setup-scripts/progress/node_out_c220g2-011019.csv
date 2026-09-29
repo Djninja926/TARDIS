@@ -3518,3 +3518,5 @@ node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,s3fifoforgive,10,273527
 node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lru,0.1,2735,27,1,1,NA,NA,NA,2735273.0624,79054751
 node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lru,0.1,2735,27,1,2,NA,NA,NA,2735273.0624,79054751
 node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lru,0.1,2735,27,1,3,NA,NA,NA,2735273.0624,79054751
+node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lruforgive,0.1,2735,27,1,1,NA,NA,NA,2735273.0624,79054751
+node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lruforgive,0.1,2735,27,1,2,NA,NA,NA,2735273.0624,79054751

@@ -37965,6 +37965,7 @@ node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_250,s3fifo,10,1136,2
 node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_250,s3fifo,10,1136,26,1,2,0.2950,0.75,7720695,11355.7504,608779
 node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_250,s3fifo,10,1136,26,1,3,0.2950,0.74,7720695,11355.7504,608779
 node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_250,s3fifoforgive,10,1136,26,1,1,NA,NA,5659528,11355.7504,608779
+node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_250,s3fifoforgive,10,1136,26,1,2,NA,NA,5659528,11355.7504,608779
 node1.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentBlock_16868,lru,10,2886,27,1,1,0.2140,0.39,8660692,28859.4944,1000215
 node1.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentBlock_16868,lru,10,2886,27,1,2,0.2140,0.39,8660692,28859.4944,1000215
 node1.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentBlock_16868,lru,10,2886,27,1,3,0.2140,0.40,8660692,28859.4944,1000215
@@ -60312,6 +60313,8 @@ node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,s3fifoforgive,10,273527
 node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lru,0.1,2735,27,1,1,NA,NA,NA,2735273.0624,79054751
 node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lru,0.1,2735,27,1,2,NA,NA,NA,2735273.0624,79054751
 node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lru,0.1,2735,27,1,3,NA,NA,NA,2735273.0624,79054751
+node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lruforgive,0.1,2735,27,1,1,NA,NA,NA,2735273.0624,79054751
+node0.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,2016_LUN3,lruforgive,0.1,2735,27,1,2,NA,NA,NA,2735273.0624,79054751
 node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_295,lru,10,1580,27,1,1,0.0912,1.09,44708182,15800.0128,1671740
 node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_295,lru,10,1580,27,1,2,0.0912,1.11,44708182,15800.0128,1671740
 node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,alibabaBlock_295,lru,10,1580,27,1,3,0.0912,1.11,44708182,15800.0128,1671740

@@ -66,7 +66,7 @@ NUM_THREAD="${NUM_THREAD:-4}"
 FORGIVE_THREADS="${FORGIVE_THREADS:-2}"
 CELL_TIMEOUT="${CELL_TIMEOUT:-14400}"
 PARAMS="${PARAMS:-}"
-EXPAND=5
+EXPAND="${EXPAND:-5}"   # assumed worst-case zstd expansion for the disk check
 
 NODE=$(hostname)
 mkdir -p "$WORK" "$(dirname "$OUT")" "$(dirname "$DIAG")"
@@ -156,7 +156,12 @@ while IFS= read -r line; do
   ds_path="${url#*/cacheDatasets/}"; ds_path="${ds_path%/*}"
   dataset="${ds_path//\//_}"; [ -z "$dataset" ] && dataset="unknown"
 
-  if grep -q "^[^,]*,$dataset,$name," "$OUT" 2>/dev/null; then
+  # Done = any row for this trace that is NOT a transient failure. NA_DISK /
+  # NA_UNZIP / NA_DLFAIL / NA_NOWSS rows don't count, so rerunning a shard
+  # retries exactly the traces that failed. NA_SMALL is deterministic and
+  # always sits beside real baseline rows, so it never triggers a retry.
+  if grep "^[^,]*,$dataset,$name," "$OUT" 2>/dev/null \
+       | grep -qvE ',NA_(DISK|UNZIP|DLFAIL|NOWSS),'; then
     echo "[$NODE] SKIP $dataset/$name (done)"; continue
   fi
   echo "[$NODE] === $dataset/$name ==="
@@ -169,17 +174,25 @@ while IFS= read -r line; do
     na_rows "$dataset" "$name" NA_DLFAIL "$ALGOS_BASE,$ALGOS_EMB" "${PC_ARR[@]}"; continue
   fi
 
+  # Decompress when it fits (faster: each reader thread skips zstd work).
+  # Otherwise, or if decompression fails part-way (typically the disk filling
+  # on a trace that expands more than EXPAND x), run cachesim on the .zst
+  # itself. libCacheSim reads .zst natively and the results are identical,
+  # verified cell-for-cell including the working-set line.
   zsize=$(stat -c %s "$zst" 2>/dev/null || echo 0)
   avail=$(df -B1 --output=avail "$WORK" 2>/dev/null | tail -1 || echo 0)
   if [ "$avail" -gt 0 ] && [ $((zsize * EXPAND)) -gt "$avail" ]; then
-    echo "[$NODE] DISK SKIP (need ~$((zsize*EXPAND/1073741824))GiB, have $((avail/1073741824))GiB)"
-    rm -f "$zst"
-    na_rows "$dataset" "$name" NA_DISK "$ALGOS_BASE,$ALGOS_EMB" "${PC_ARR[@]}"; continue
-  fi
-
-  if ! zstd -d -q --rm "$zst" -o "$trace"; then
-    echo "[$NODE] UNZIP FAIL"; rm -f "$zst" "$trace"
-    na_rows "$dataset" "$name" NA_UNZIP "$ALGOS_BASE,$ALGOS_EMB" "${PC_ARR[@]}"; continue
+    echo "[$NODE]   too big to decompress (~$((zsize*EXPAND/1073741824))GiB vs $((avail/1073741824))GiB free); reading .zst directly"
+    trace="$zst"
+  elif ! zstd -d -q --rm "$zst" -o "$trace"; then
+    rm -f "$trace"                              # partial output; --rm keeps the .zst on failure
+    if [ -s "$zst" ]; then
+      echo "[$NODE]   decompression failed; reading .zst directly"
+      trace="$zst"
+    else
+      echo "[$NODE] UNZIP FAIL"; rm -f "$zst"
+      na_rows "$dataset" "$name" NA_UNZIP "$ALGOS_BASE,$ALGOS_EMB" "${PC_ARR[@]}"; continue
+    fi
   fi
 
   ok=1
@@ -226,7 +239,7 @@ print(max(1, int(wb*frac)), max(1, int(mult*frac*wo)), int(frac*wo))")"
     done
   fi
 
-  rm -f "$trace" "$WORK"/.raw.* "$WORK"/.cachesim_out.* 2>/dev/null
+  rm -f "$trace" "$zst" "$WORK"/.raw.* "$WORK"/.cachesim_out.* 2>/dev/null
   if [ "$ok" = "1" ]; then echo "[$NODE] DONE $dataset/$name"
   else echo "[$NODE] PARTIAL $dataset/$name (grep NA_ in the CSV)"; fi
 done < "$LIST"
