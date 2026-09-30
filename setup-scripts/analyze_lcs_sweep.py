@@ -20,6 +20,16 @@ Optional:
                             binding (final_emb_count == max_emb), per size
   --byte                    use byte miss ratio instead of object miss ratio
   --out gaps.csv            write per-trace gaps (default lcs_gaps.csv)
+  --remaining rerun.tsv     with --list: write every trace that is NOT complete
+                            (never ran, failed, or stopped part-way), in the
+                            same <dataset>\\t<url> format, ready to partition
+  --only traces.tsv         analyze only the traces in this list (e.g. the
+                            held-out test traces from the tuning plan)
+  --no-families             skip the family-weighted section
+
+FAMILIES: near-identical volumes (see trace_families.py) are grouped and a
+family-weighted view is printed, where each family counts once. If the two
+views disagree, the trace-weighted numbers are being driven by clones.
 
 Usage:
   python analyze_lcs_sweep.py lcs_progress\\merged_all_nodes.csv ^
@@ -27,6 +37,11 @@ Usage:
 """
 import argparse, csv, glob, re, statistics, sys
 from collections import defaultdict
+
+try:
+    from trace_families import load_trace_stats, families
+except ImportError:           # analyzer still works without the module
+    load_trace_stats = families = None
 
 # (forgive policy, baseline, label). The third pair is the one a reviewer asks
 # about: does LRU + forgiveness beat S3FIFO, the stronger baseline, outright?
@@ -43,10 +58,11 @@ def fnum(s):
         return None
 
 
-def dataset_of(url):
-    """Same derivation as the worker: path under cacheDatasets/, slashes -> _."""
-    p = url.split("/cacheDatasets/", 1)[-1].rsplit("/", 1)[0]
-    return p.replace("/", "_") or "unknown"
+from trace_names import read_list   # one naming rule for every script
+
+
+BASE_POLS = ("lru", "s3fifo")
+EMB_POLS = ("lruforgiveembcache", "s3fifoforgive-embcache")
 
 
 def pct_key(p):
@@ -72,33 +88,43 @@ def mean(xs):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("csv")
+    ap.add_argument("csv", nargs="+",
+                    help="one or more merged CSVs (e.g. the main sweep + the rerun + the 1%% run)")
     ap.add_argument("--list", help="all_traces.tsv, for progress per dataset")
     ap.add_argument("--diag", help='glob of forgive_diag_*.log files (quote it)')
     ap.add_argument("--pcts", default="10,0.1",
                     help="the worker's PCTS, in SIZES order (maps diag tag embN -> pct)")
     ap.add_argument("--byte", action="store_true", help="use byte miss ratio")
+    ap.add_argument("--remaining", metavar="OUT_TSV",
+                    help="with --list: write incomplete traces here for a rerun")
+    ap.add_argument("--only", metavar="LIST_TSV",
+                    help="restrict the analysis to traces in this list")
+    ap.add_argument("--no-families", action="store_true")
     ap.add_argument("--top", type=int, default=10, help="top-N traces by gap to list")
     ap.add_argument("--out", default="lcs_gaps.csv")
     args = ap.parse_args()
     col = "byte_miss" if args.byte else "miss"
+    only = {(d, n) for d, n, _ in read_list(args.only)} if args.only else None
 
     # ---------------------------------------------------------------- load
     cells = {}                                   # (ds,trace,policy,pct) -> row
     na_rows = []                                 # (key, reason); resolved after load
     seen_traces = defaultdict(set)               # ds -> {trace} with a numeric cell
     dupes = bad = 0
-    with open(args.csv, encoding="utf-8-sig", newline="") as f:
+    for path in args.csv:
+      with open(path, encoding="utf-8-sig", newline="") as f:
         rd = csv.DictReader(f)
         need = {"dataset", "trace", "policy", "cache_pct", "miss", "byte_miss"}
         if not need.issubset(rd.fieldnames or []):
-            sys.exit(f"ERROR: {args.csv} is not the libCacheSim sweep format "
+            sys.exit(f"ERROR: {path} is not the libCacheSim sweep format "
                      f"(columns: {rd.fieldnames}). Old CacheLib CSVs need "
                      f"analyze_footprint_sweep.py instead.")
         for r in rd:
             if r.get("dataset") == "dataset":        # a repeated header line
                 continue
             ds, tr = r["dataset"], r["trace"]
+            if only is not None and (ds, tr) not in only:
+                continue
             k = (ds, tr, r["policy"], r["cache_pct"])
             if (r["miss"] or "").startswith("NA"):
                 na_rows.append((k, r["miss"]))
@@ -116,7 +142,7 @@ def main():
     # later produced real results are retry history, not gaps. NA_SMALL is a
     # permanent, deterministic skip and is always reported. Each (cell, reason)
     # counts once even if it appears in several node files.
-    TRANSIENT = {"NA_DISK", "NA_UNZIP", "NA_DLFAIL", "NA_NOWSS"}
+    TRANSIENT = {"NA_DISK", "NA_UNZIP", "NA_DLFAIL", "NA_NOWSS", "NA_CONVERT", "NA_FAIL"}
     na = defaultdict(lambda: defaultdict(int))
     superseded = 0
     for k, reason in set(na_rows):
@@ -151,7 +177,7 @@ def main():
     pcts = sorted({g["cache_pct"] for g in gaps}, key=pct_key)
     metric = "byte miss ratio" if args.byte else "object miss ratio"
 
-    print(f"loaded {len(cells)} numeric cells from {args.csv}"
+    print(f"loaded {len(cells)} numeric cells from {', '.join(args.csv)}"
           + (f"  ({dupes} duplicate cells, last kept)" if dupes else "")
           + (f"  ({superseded} failed cells later retried OK)" if superseded else "")
           + (f"  ({bad} unparsable)" if bad else ""))
@@ -159,22 +185,49 @@ def main():
 
     # ---------------------------------------------------------------- progress
     if args.list:
-        expected = defaultdict(set)
-        with open(args.list, encoding="utf-8-sig") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                url = line.split("\t")[-1]
-                name = url.rsplit("/", 1)[-1].split(".oracleGeneral")[0]
-                expected[dataset_of(url)].add(name)
-        tot_d = tot_e = 0
-        print("\n" + "=" * 78 + "\nPROGRESS (traces with a real result / expected)\n" + "=" * 78)
-        for ds in sorted(expected, key=lambda d: -len(expected[d])):
-            d, e = len(seen_traces.get(ds, set()) & expected[ds]), len(expected[ds])
-            tot_d += d; tot_e += e
-            print(f"  {ds:>28} | {d:>5} / {e:<5} {100 * d / e:5.1f}%")
-        print(f"  {'TOTAL':>28} | {tot_d:>5} / {tot_e:<5} {100 * tot_d / max(1, tot_e):5.1f}%")
+        listed = read_list(args.list)
+        if only is not None:
+            listed = [x for x in listed if (x[0], x[1]) in only]
+        want = [p.strip() for p in args.pcts.split(",") if p.strip()]
+        status = defaultdict(dict)                     # (ds,tr) -> {(pol,pct): ok|small}
+        for (ds, tr, pol, pct) in cells:
+            status[(ds, tr)][(pol, pct)] = "ok"
+        for (ds, tr, pol, pct), reason in set(na_rows):
+            if reason == "NA_SMALL":
+                status[(ds, tr)].setdefault((pol, pct), "small")
+
+        def complete(key):
+            st = status.get(key, {})
+            return (all(st.get((p, c)) == "ok" for p in BASE_POLS for c in want) and
+                    all(st.get((p, c)) in ("ok", "small") for p in EMB_POLS for c in want))
+
+        by_ds = defaultdict(list)
+        for ds, name, url in listed:
+            by_ds[ds].append((name, url))
+        print("\n" + "=" * 78 + "\nPROGRESS  (any result / complete / expected;  complete = every "
+              f"policy at {','.join(want)}% done or NA_SMALL)\n" + "=" * 78)
+        tot = [0, 0, 0]
+        incomplete = []
+        for ds in sorted(by_ds, key=lambda d: -len(by_ds[d])):
+            names = by_ds[ds]
+            a = sum(1 for n, _ in names if n in seen_traces.get(ds, ()))
+            c = sum(1 for n, _ in names if complete((ds, n)))
+            incomplete += [(ds, u) for n, u in names if not complete((ds, n))]
+            tot[0] += a; tot[1] += c; tot[2] += len(names)
+            print(f"  {ds:>28} | {a:>5} {c:>5} / {len(names):<5} {100 * c / len(names):5.1f}% complete")
+        print(f"  {'TOTAL':>28} | {tot[0]:>5} {tot[1]:>5} / {tot[2]:<5} "
+              f"{100 * tot[1] / max(1, tot[2]):5.1f}% complete")
+        if args.remaining:
+            with open(args.remaining, "w", encoding="utf-8", newline="\n") as f:
+                for ds, u in incomplete:
+                    f.write(f"{ds}\t{u}\n")
+            per = defaultdict(int)
+            for ds, _ in incomplete:
+                per[ds] += 1
+            print(f"\n  wrote {len(incomplete)} incomplete traces -> {args.remaining}: "
+                  + ", ".join(f"{d} {n}" for d, n in sorted(per.items(), key=lambda x: -x[1])))
+    elif args.remaining:
+        sys.exit("--remaining needs --list")
 
     # ---------------------------------------------------------------- rollups
     for pct in pcts:
@@ -210,6 +263,47 @@ def main():
                      if rs else f" {0:>5} {'--':>12} {'--':>11} {'':>6} {'':>6} |")
         print("-" * len(hdr) + "\n" + line)
 
+    # ---------------------------------------------------------------- families
+    if not args.no_families and families is not None:
+        stats = {}
+        for path in args.csv:
+            stats.update(load_trace_stats(path))
+        fam = families(stats)
+        fam_n = defaultdict(set)
+        for (ds, tr), fid in fam.items():
+            fam_n[ds].add(fid)
+        print("\n" + "=" * 78)
+        print("FAMILY-WEIGHTED rollup (each family of near-identical traces counts once)")
+        print("=" * 78)
+        print("  If this disagrees with the table above, clones are driving the trace-weighted numbers.")
+        for pct in pcts:
+            print(f"\n  at {pct}% footprint")
+            hdr = f"{'dataset':>28} | {'traces':>6} {'fams':>5} |"
+            for _, _, lab in PAIRS:
+                hdr += f" {lab + ' famW':>12} {'better':>6} |"
+            print(hdr)
+            for ds in datasets:
+                line = f"{ds:>28} |"
+                n_tr = len({g['trace'] for g in gaps if g['dataset'] == ds and g['cache_pct'] == pct})
+                if not n_tr:
+                    continue
+                fams_here = {fam.get((ds, g['trace']), g['trace']) for g in gaps
+                             if g['dataset'] == ds and g['cache_pct'] == pct}
+                line += f" {n_tr:>6} {len(fams_here):>5} |"
+                for _, _, lab in PAIRS:
+                    byf = defaultdict(list)
+                    for g in gaps:
+                        if g["dataset"] == ds and g["cache_pct"] == pct and g["pair"] == lab \
+                                and g["rel"] is not None:
+                            byf[fam.get((ds, g["trace"]), g["trace"])].append(g["rel"])
+                    fm = [statistics.fmean(v) for v in byf.values()]
+                    if fm:
+                        b = sum(1 for x in fm if x > TIE)
+                        line += f" {fmt(mean(fm), 12)} {100 * b / len(fm):5.0f}% |"
+                    else:
+                        line += f" {'--':>12} {'--':>6} |"
+                print(line)
+
     # ---------------------------------------------------------------- top traces
     for pct in pcts:
         for _, _, lab in PAIRS:
@@ -243,7 +337,8 @@ def main():
         files = sorted(glob.glob(args.diag))
         pct_by_idx = [p.strip() for p in args.pcts.split(",")]
         stats = defaultdict(lambda: {"cells": 0, "binding": 0, "rate": []})
-        hdr_re = re.compile(r"^### (\S+)/(\S+) tag=emb(\d+)")
+        # newer workers write pct= in the header; older logs only have the tag index
+        hdr_re = re.compile(r"^### (\S+)/(\S+) tag=emb(\d+)\S*(?: pct=(\S+))?")
         lru_re = re.compile(r"\[LRUForgiveEmbCache .*?max_emb=(-?\d+|unlimited)\].*?"
                             r"forgives=\d+\(([\d.]+)%\).*?final_emb_count=(\d+)")
         s3_re = re.compile(r"\[S3FIFOForgiveEmbCache .*?max_emb=(-?\d+|unlimited)\].*?"
@@ -255,7 +350,7 @@ def main():
                     m = hdr_re.match(line)
                     if m:
                         i = int(m.group(3))
-                        cur_pct = pct_by_idx[i] if i < len(pct_by_idx) else f"emb{i}"
+                        cur_pct = m.group(4) or (pct_by_idx[i] if i < len(pct_by_idx) else f"emb{i}")
                         continue
                     for rx, lab in ((lru_re, "LRUF"), (s3_re, "S3FF")):
                         m = rx.search(line)

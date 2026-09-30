@@ -27,8 +27,17 @@ mkdir -p "$TARDIS/results"
 
 # The worker needs wget + zstd only. numactl is not used: this is a miss-ratio
 # sweep, and cachesim parallelizes internally across the algo x size grid.
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget zstd >/dev/null 2>&1 \
-  && echo "wget + zstd ok" || echo "WARN: apt-get install wget zstd failed"
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y wget zstd tmux python3-pip >/dev/null 2>&1 \
+  && echo "wget + zstd + tmux + pip ok" || echo "WARN: apt-get install wget zstd tmux python3-pip failed"
+
+# optuna: used only by the tuning worker (tune_study.py). A failure here
+# doesn't affect sweeps, so warn rather than stop.
+if ! python3 -c "import optuna" 2>/dev/null; then
+  python3 -m pip install --user -q optuna 2>/dev/null \
+    || python3 -m pip install --user -q --break-system-packages optuna 2>/dev/null
+fi
+python3 -c "import optuna; print('optuna', optuna.__version__, 'ok')" 2>/dev/null \
+  || echo "WARN: optuna not installed (tuning runs will fail; sweeps unaffected)"
 
 if [ "${PURGE_CACHELIB:-0}" = "1" ]; then
   echo "PURGE_CACHELIB=1 -> removing the old CacheLib tree to free disk"
@@ -60,7 +69,26 @@ cd "$LCS"
 echo "code: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 
 echo "############ 3. dependencies (cmake, ninja, glib, tcmalloc, zstd) ############"
-bash scripts/install_dependency.sh 2>&1 | tail -5
+# Aryan's fork (newer libCacheSim) installs its OWN CMake into ~/software/cmake
+# and only puts it on PATH inside that script's process (plus ~/.bashrc, which a
+# non-interactive ssh session never reads). The SOSP'23 artifact's script used
+# the system cmake instead, which is why this step used to just work. So put
+# that directory on PATH for the build below.
+export PATH="$HOME/software/cmake/bin:$PATH"
+if [ "${FORCE_DEPS:-0}" != "1" ] && command -v cmake >/dev/null 2>&1 \
+     && command -v ninja >/dev/null 2>&1 && pkg-config --exists glib-2.0 2>/dev/null; then
+  echo "dependencies already installed (cmake $(cmake --version | head -1 | awk '{print $3}')); skipping (FORCE_DEPS=1 to redo)"
+else
+  bash scripts/install_dependency.sh 2>&1 | tail -5
+fi
+hash -r
+if ! command -v cmake >/dev/null 2>&1; then
+  echo "cmake still not on PATH; installing the distro package as a fallback"
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y cmake ninja-build >/dev/null 2>&1
+  hash -r
+fi
+command -v cmake >/dev/null 2>&1 || { echo "ERROR: no cmake available; cannot build"; exit 1; }
+echo "using $(command -v cmake) ($(cmake --version | head -1))"
 
 echo "############ 4. build (cmake -G Ninja + ninja) ############"
 bash scripts/install_libcachesim.sh 2>&1 | tee /tmp/lcs_build.log | tail -5
@@ -92,6 +120,20 @@ for algo in lruforgiveembcache s3fifoforgive-embcache; do
   fi
 done
 [ "$MISSING" = "1" ] && { echo "ERROR: expected policies missing; stopping."; exit 1; }
+
+# traceConv converts the Wikimedia 2019 TSV traces to oracleGeneral
+# (convert_wikimedia.sh). install_libcachesim.sh builds every target, so it
+# sits next to cachesim; build it explicitly if a partial build missed it.
+TCONV="$(dirname "$BIN")/traceConv"
+if [ ! -x "$TCONV" ]; then
+  (cd "$(dirname "$(dirname "$BIN")")" && ninja traceConv >/dev/null 2>&1)
+fi
+if [ -x "$TCONV" ]; then
+  echo "  OK       traceConv"
+  echo "$TCONV" > "$TARDIS/traceconv_path.txt"
+else
+  echo "  WARN     traceConv missing: Wikimedia traces will fail to convert (NA_CONVERT)"
+fi
 
 echo "############ done ############"
 echo "cachesim: $BIN"

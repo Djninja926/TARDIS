@@ -29,6 +29,10 @@ cache_name is the DETAILED name, e.g. "LRUForgiveEmbCache-th0.40-lr0.20" or
 Modes:
   --header                    print the CSV header
   --wss-from ERRFILE          print "wss_obj wss_byte sample_ratio" and exit
+  --lookup-params JSON        print the tuned --eviction-params for
+                              --dataset/--pct/--policy (empty = defaults). Keys are
+                              "<dataset>|<pct>|<policy>", with "*" wildcards for
+                              dataset and/or pct as fallbacks.
   (default)                   parse --raw into CSV rows on stdout
 """
 import argparse, re, sys
@@ -94,7 +98,22 @@ def main():
     ap.add_argument("--params", default="default")
     ap.add_argument("--header", action="store_true")
     ap.add_argument("--wss-from", metavar="ERRFILE")
+    ap.add_argument("--lookup-params", metavar="JSON")
+    ap.add_argument("--pct", default="")
+    ap.add_argument("--policy", default="")
     args = ap.parse_args()
+
+    if args.lookup_params:
+        import json
+        with open(args.lookup_params, encoding="utf-8") as f:
+            table = json.load(f)
+        d, c, p = args.dataset, args.pct, args.policy
+        for key in (f"{d}|{c}|{p}", f"{d}|*|{p}", f"*|{c}|{p}", f"*|*|{p}"):
+            if key in table:
+                print(table[key] or "")
+                return
+        print("")
+        return
 
     if args.header:
         print(COLUMNS)
