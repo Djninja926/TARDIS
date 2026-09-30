@@ -14,8 +14,12 @@
 # 64-bit pattern (verified: every id, size and timestamp matched the TSV, and
 # cachesim gave identical results on the converted file and on the raw TSV).
 #
-# Safety check: the output must hold exactly one 24-byte record per data row,
-# otherwise the conversion is treated as failed and nothing is left behind.
+# Safety check: the output must hold exactly one 24-byte record per data row
+# WITH A POSITIVE SIZE, otherwise the conversion is treated as failed and
+# nothing is left behind. Rows whose size is 0 or not a number are skipped by
+# libCacheSim's reader (ignore_size_zero_req, on by default), exactly as it
+# skips zero-size requests when reading any oracleGeneral trace, so those are
+# expected to be missing; they are counted and reported, not hidden.
 set -uo pipefail
 
 IN="${1:?input .gz}"
@@ -46,17 +50,21 @@ case "$ncol" in
      rm -f "$OUT"; exit 4 ;;
 esac
 
-rows=$(wc -l < "$TSV"); [ "$header" = true ] && rows=$((rows - 1))
+# rows = data rows; kept = rows whose size field is a positive number
+read -r rows kept <<< "$(awk -F'\t' -v c="$size_col" -v h="$header" \
+    'NR==1 && h=="true" {next} {n++; if (($c + 0) > 0) k++} END {print n + 0, k + 0}' "$TSV")"
 
 "$TRACECONV" "$TSV" csv \
   -t "time-col=1,obj-id-col=2,obj-size-col=${size_col},delimiter=\t,has-header=${header},obj-id-is-num=true" \
   --output-format oracleGeneral -o "$OUT" > "${OUT}.convlog" 2>&1
 rc=$?
 recs=$(( $(stat -c %s "$OUT" 2>/dev/null || echo 0) / 24 ))
-if [ "$rc" -ne 0 ] || [ "$recs" -ne "$rows" ]; then
-  echo "convert: traceConv rc=$rc, $recs records for $rows rows ($kind, header=$header); log:" >&2
+if [ "$rc" -ne 0 ] || [ "$recs" -ne "$kept" ]; then
+  echo "convert: traceConv rc=$rc, $recs records for $kept positive-size rows of $rows" \
+       "($kind, header=$header); log:" >&2
   tail -3 "${OUT}.convlog" >&2
   rm -f "$OUT" "${OUT}.convlog"; exit 5
 fi
 rm -f "${OUT}.convlog"
-echo "convert: $kind trace, header=$header, $rows requests -> $OUT"
+echo "convert: $kind trace, header=$header, $kept requests -> $OUT" \
+     "($((rows - kept)) of $rows rows had size 0 or no size and were skipped)"
