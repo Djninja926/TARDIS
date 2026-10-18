@@ -22,7 +22,7 @@ import argparse, csv, statistics, sys
 from collections import defaultdict
 
 try:
-    from trace_families import load_trace_stats, families
+    from trace_names import load_trace_stats, families
 except ImportError:
     load_trace_stats = families = None
 

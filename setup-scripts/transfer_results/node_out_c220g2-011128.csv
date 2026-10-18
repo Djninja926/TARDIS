@@ -1,0 +1,9 @@
+node,dataset,trace,policy,cache_name,cache_pct,size_bytes,requests,miss,byte_miss,params
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,lru,LRU,1,2567357746,8660501058,0.0789,0.0976,default
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,lru,LRU,10,25673577466,8660501058,0.0364,0.0575,default
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,lru,LRU,0.1,256735774,8660501058,0.1937,0.2085,default
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,s3fifo,S3FIFO-0.1000-2,1,2567357746,8660501058,0.0746,0.0965,default
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,s3fifo,S3FIFO-0.1000-2,10,25673577466,8660501058,0.0334,0.0538,default
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,s3fifo,S3FIFO-0.1000-2,0.1,256735774,8660501058,0.1643,0.1884,default
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,1,2567357746,8660501058,0.0779,0.0970,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=9950520
+node2.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaKV,202312_kv_traces_all.csv,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,1,2567357746,8660501058,0.0746,0.0966,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=9950520

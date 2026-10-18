@@ -1,0 +1,17 @@
+relative miss-ratio reduction vs own baseline (positive = forgive better); all traces present in both
+
+                 dataset  size  pol |     n   default     tuned    delta tuned>dflt |  fams famW dflt famW tuned
+                 metaCDN   10% LRUF |     3   +0.000%   +0.072%  +0.072        67% |     3   +0.000%    +0.072%
+                 metaCDN   10% S3FF |     3   +0.000%   -0.550%  -0.550         0% |     3   +0.000%    -0.550%
+                 metaCDN    1% LRUF |     3   +0.000%   +0.689%  +0.689        67% |     3   +0.000%    +0.689%
+                 metaCDN    1% S3FF |     3   +0.000%   -0.508%  -0.508         0% |     3   +0.000%    -0.508%
+                 metaCDN  0.1% LRUF |     3   +0.000%   +0.528%  +0.528       100% |     3   +0.000%    +0.528%
+                 metaCDN  0.1% S3FF |     3   +0.013%   -1.054%  -1.067         0% |     3   +0.013%    -1.054%
+                  metaKV   10% LRUF |     3   +0.000%   +0.155%  +0.155        67% |     3   +0.000%    +0.155%
+                  metaKV   10% S3FF |     3   +0.000%   +0.000%  +0.000         0% |     3   +0.000%    +0.000%
+                  metaKV    1% LRUF |     4   +0.000%   +3.424%  +3.424       100% |     4   +0.000%    +3.424%
+                  metaKV    1% S3FF |     4   +0.000%   +0.277%  +0.277        75% |     4   +0.000%    +0.277%
+                  metaKV  0.1% LRUF |     3   +0.000%   +2.652%  +2.652       100% |     3   +0.000%    +2.652%
+                  metaKV  0.1% S3FF |     3   +0.000%   -3.454%  -3.454         0% |     3   +0.000%    -3.454%
+            tencentPhoto    1% LRUF |     2   +0.000%   +8.038%  +8.038       100% |     2   +0.000%    +8.038%
+            tencentPhoto    1% S3FF |     1   +0.000%   -0.727%  -0.727         0% |     1   +0.000%    -0.727%

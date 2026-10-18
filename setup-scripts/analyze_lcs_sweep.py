@@ -26,28 +26,34 @@ Optional:
   --only traces.tsv         analyze only the traces in this list (e.g. the
                             held-out test traces from the tuning plan)
   --no-families             skip the family-weighted section
+  --exclude REGEX           drop datasets matching REGEX everywhere (repeatable)
 
-FAMILIES: near-identical volumes (see trace_families.py) are grouped and a
+WORKLOAD TABLE (always printed): the paper-style table, mean relative miss-ratio
+reduction per workload group (Wiki Upload, Wiki Text, Meta KV, ...), LRUForgive
+and S3FIFOForgive at every cache size. Sampled copies of a trace are counted
+once (the full copy); "sources" shows which datasets fed each row.
+  --latex table.tex / --table-csv table.csv    also write it out
+  --families-table          average per family first
+  --keep-variants           count every copy of a trace
+
+FAMILIES: near-identical volumes (see trace_names.py) are grouped and a
 family-weighted view is printed, where each family counts once. If the two
 views disagree, the trace-weighted numbers are being driven by clones.
 
-Usage:
-  python analyze_lcs_sweep.py lcs_progress\\merged_all_nodes.csv ^
-      --list all_traces.tsv --diag "lcs_progress\\forgive_diag_*.log"
+Usage (main sweep first, later runs after it: when a cell repeats, the last wins):
+  python analyze_lcs_sweep.py lcs_progress\\merged_all_nodes.csv rerun_results\\merged_all_nodes.csv ^
+      p1_results\\merged_all_nodes.csv --list all_plus.tsv --diag "*_results\\forgive_diag_*.log" ^
+      --latex workload_table.tex
 """
 import argparse, csv, glob, re, statistics, sys
 from collections import defaultdict
 
-try:
-    from trace_families import load_trace_stats, families
-except ImportError:           # analyzer still works without the module
-    load_trace_stats = families = None
+from trace_names import read_list, load_trace_stats, families
 
-# (forgive policy, baseline, label). The third pair is the one a reviewer asks
-# about: does LRU + forgiveness beat S3FIFO, the stronger baseline, outright?
+# (forgive policy, baseline, label). Each forgive policy is compared only with
+# its own baseline (LRUF vs S3-FIFO was dropped: not a comparison we report).
 PAIRS = [("lruforgiveembcache", "lru", "LRUF"),
-         ("s3fifoforgive-embcache", "s3fifo", "S3FF"),
-         ("lruforgiveembcache", "s3fifo", "LRUFvS3")]
+         ("s3fifoforgive-embcache", "s3fifo", "S3FF")]
 TIE = 1e-9          # |gap| at or below this counts as "no change"
 
 
@@ -56,9 +62,6 @@ def fnum(s):
         return float(s)
     except (TypeError, ValueError):
         return None
-
-
-from trace_names import read_list   # one naming rule for every script
 
 
 BASE_POLS = ("lru", "s3fifo")
@@ -86,13 +89,154 @@ def mean(xs):
     return statistics.fmean(xs) if xs else None
 
 
+# ---------------------------------------------------------------- workload table
+# The paper-style table: mean relative miss-ratio reduction per WORKLOAD GROUP,
+# LRUForgive (vs LRU) and S3FIFOForgive (vs S3-FIFO), one column pair per size.
+# Groups match on the dataset name (and, for the CMU "wiki" folder, the trace
+# name: wiki_2016u = upload, wiki_2019t = text). First match wins. Groups after
+# the rule line are datasets the paper table does not have.
+#
+# VARIANTS: the CMU mirror has several copies of some traces (twitter clusters
+# in full and as sample10 / sample100, alibabaBlock volumes in several
+# subfolders). They share a trace name, so within a group each trace name keeps
+# only the copy with the most requests (the full trace). --keep-variants keeps all.
+GROUPS = [
+    ("Wiki Upload",   r"^wikimedia_.*upload", None),
+    ("Wiki Upload",   r"(^|_)wiki($|_)", r"u$"),
+    ("Wiki Text",     r"^wikimedia_.*text", None),
+    ("Wiki Text",     r"(^|_)wiki($|_)", r"t$"),
+    ("Meta KV",       r"metaKV", None),
+    ("Tencent Photo", r"tencentPhoto", None),
+    ("Tencent Block", r"tencentBlock", None),
+    ("Meta CDN",      r"metaCDN", None),
+    ("Alibaba Block", r"alibabaBlock", None),
+    ("Twitter",       r"twitter", None),
+    ("Meta Storage",  r"metaStorage", None),
+    ("MSR",           r"(^|_)msr", None),
+    ("CloudPhysics",  r"cloudphysics", None),
+    ("FIU",           r"(^|_)fiu", None),
+    ("SYSTOR",        r"systor", None),
+]
+PAPER = ["Wiki Upload", "Wiki Text", "Meta KV", "Tencent Photo", "Tencent Block",
+         "Meta CDN", "Alibaba Block", "Twitter"]
+TABLE_COLS = (("LRUF", "LRUForgive"), ("S3FF", "S3FIFOForgive"))
+
+
+def group_of(ds, trace):
+    for label, dre, tre in GROUPS:
+        if re.search(dre, ds) and (tre is None or re.search(tre, trace)):
+            return label
+    return None
+
+
+def workload_table(gaps, cells, pcts, fam, args, metric):
+    reqs = defaultdict(float)                       # (ds, trace) -> requests
+    for (ds, tr, _, _), r in cells.items():
+        reqs[(ds, tr)] = max(reqs[(ds, tr)], fnum(r.get("requests")) or 0)
+    traces = {(g["dataset"], g["trace"]) for g in gaps if g["rel"] is not None}
+    best, unmapped = {}, defaultdict(int)
+    for ds, tr in traces:
+        grp = group_of(ds, tr)
+        if grp is None:
+            unmapped[ds] += 1
+            continue
+        key = (grp, ds + "/" + tr) if args.keep_variants else (grp, tr)
+        cur = best.get(key)
+        if cur is None or reqs[(ds, tr)] > reqs[(cur, tr)]:
+            best[key] = ds
+    kept = {(ds, k[1].rsplit("/", 1)[-1] if args.keep_variants else k[1]): k[0]
+            for k, ds in best.items()}
+    dropped = sum(1 for ds, tr in traces if group_of(ds, tr)) - len(kept)
+    sources = defaultdict(lambda: defaultdict(int))
+    for (ds, tr), grp in kept.items():
+        sources[grp][ds] += 1
+
+    table = defaultdict(dict)                       # grp -> (pct, lab) -> (mean, n)
+    for pct in pcts:
+        for lab, _ in TABLE_COLS:
+            per = defaultdict(lambda: defaultdict(list))
+            for g in gaps:
+                grp = kept.get((g["dataset"], g["trace"]))
+                if grp and g["cache_pct"] == pct and g["pair"] == lab and g["rel"] is not None:
+                    unit = fam.get((g["dataset"], g["trace"]), (g["dataset"], g["trace"])) \
+                        if args.families_table else (g["dataset"], g["trace"])
+                    per[grp][unit].append(g["rel"])
+            for grp, units in per.items():
+                xs = [statistics.fmean(v) for v in units.values()]
+                table[grp][(pct, lab)] = (statistics.fmean(xs), len(xs))
+
+    order = [g for g in PAPER if g in table] + \
+            [g for g in dict.fromkeys(l for l, _, _ in GROUPS) if g in table and g not in PAPER]
+    if not order:
+        return
+    w0 = max(len("Workload"), *(len(g) for g in order))
+    head1 = f"{'':<{w0}} |" + "".join(f" {pct + '% of footprint':^31} |" for pct in pcts)
+    head2 = f"{'Workload':<{w0}} |" + "".join(
+        f" {'LRUForgive':>11} {'S3FIFOForgive':>13} {'n':>5} |" for _ in pcts)
+    print("\n" + "=" * 78)
+    print(f"WORKLOAD TABLE: average relative {metric} reduction (%), "
+          f"mean over {'families' if args.families_table else 'traces'}")
+    print("=" * 78)
+    print(head1 + "\n" + head2 + "\n" + "-" * len(head2))
+    cell = lambda v: f"{v[0]:+.2f}" if v else "--"
+    for i, grp in enumerate(order):
+        if i and grp not in PAPER and order[i - 1] in PAPER:
+            print("-" * len(head2))
+        line = f"{grp:<{w0}} |"
+        for pct in pcts:
+            a, b = table[grp].get((pct, "LRUF")), table[grp].get((pct, "S3FF"))
+            n = f"{a[1]}/{b[1]}" if (a and b and a[1] != b[1]) else str((a or b or (0, 0))[1])
+            line += f" {cell(a):>11} {cell(b):>13} {n:>5} |"
+        print(line)
+    print(f"  n = {'families' if args.families_table else 'traces'} "
+          "(LRUForgive/S3FIFOForgive when they differ, e.g. NA_SMALL on one policy)")
+    print("  sources: " + "; ".join(
+        f"{g}: " + ", ".join(f"{ds} ({n})" for ds, n in sorted(sources[g].items())) for g in order))
+    if dropped > 0:
+        print(f"  {dropped} duplicate copies of a trace (sampled versions etc.) dropped, "
+              "keeping the copy with the most requests (--keep-variants keeps all)")
+    if unmapped:
+        print("  not in any group: " + ", ".join(f"{ds} ({n})" for ds, n in sorted(unmapped.items())))
+
+    if args.table_csv:
+        with open(args.table_csv, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["workload", "in_paper_table", "cache_pct", "policy",
+                        "mean_rel_reduction_pct", "n"])
+            for grp in order:
+                for pct in pcts:
+                    for lab, name in TABLE_COLS:
+                        v = table[grp].get((pct, lab))
+                        w.writerow([grp, grp in PAPER, pct, name,
+                                    f"{v[0]:.4f}" if v else "", v[1] if v else 0])
+        print(f"  wrote {args.table_csv}")
+    if args.latex:
+        tc = lambda v: f"${v[0]:+.2f}$" if v else "--"
+        out = [r"\begin{tabular}{l" + "rr" * len(pcts) + "}", r"\toprule",
+               " & " + " & ".join(rf"\multicolumn{{2}}{{c}}{{{p}\% footprint}}" for p in pcts) + r" \\",
+               "".join(rf"\cmidrule(lr){{{2 + 2 * i}-{3 + 2 * i}}}" for i in range(len(pcts))),
+               r"\textbf{Workload} & " + " & ".join(
+                   r"\textbf{LRUForgive} & \textbf{S3FIFOForgive}" for _ in pcts) + r" \\",
+               r"\midrule"]
+        for i, grp in enumerate(order):
+            if i and grp not in PAPER and order[i - 1] in PAPER:
+                out.append(r"\midrule")
+            out.append(grp + " & " + " & ".join(
+                f"{tc(table[grp].get((p, 'LRUF')))} & {tc(table[grp].get((p, 'S3FF')))}"
+                for p in pcts) + r" \\")
+        out += [r"\bottomrule", r"\end{tabular}"]
+        with open(args.latex, "w", encoding="utf-8") as f:
+            f.write("\n".join(out) + "\n")
+        print(f"  wrote {args.latex}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("csv", nargs="+",
                     help="one or more merged CSVs (e.g. the main sweep + the rerun + the 1%% run)")
     ap.add_argument("--list", help="all_traces.tsv, for progress per dataset")
     ap.add_argument("--diag", help='glob of forgive_diag_*.log files (quote it)')
-    ap.add_argument("--pcts", default="10,0.1",
+    ap.add_argument("--pcts", default="10,1,0.1",
                     help="the worker's PCTS, in SIZES order (maps diag tag embN -> pct)")
     ap.add_argument("--byte", action="store_true", help="use byte miss ratio")
     ap.add_argument("--remaining", metavar="OUT_TSV",
@@ -100,8 +244,16 @@ def main():
     ap.add_argument("--only", metavar="LIST_TSV",
                     help="restrict the analysis to traces in this list")
     ap.add_argument("--no-families", action="store_true")
+    ap.add_argument("--families-table", action="store_true",
+                    help="workload table: average per family of near-identical traces first")
     ap.add_argument("--top", type=int, default=10, help="top-N traces by gap to list")
     ap.add_argument("--out", default="lcs_gaps.csv")
+    ap.add_argument("--keep-variants", action="store_true",
+                    help="workload table: keep every copy of a trace (see WORKLOAD TABLE)")
+    ap.add_argument("--exclude", action="append", default=[], metavar="REGEX",
+                    help="drop datasets matching REGEX from the whole analysis (repeatable)")
+    ap.add_argument("--latex", metavar="TEX", help="workload table as LaTeX (booktabs)")
+    ap.add_argument("--table-csv", metavar="CSV", help="workload table as CSV")
     args = ap.parse_args()
     col = "byte_miss" if args.byte else "miss"
     only = {(d, n) for d, n, _ in read_list(args.only)} if args.only else None
@@ -124,6 +276,8 @@ def main():
                 continue
             ds, tr = r["dataset"], r["trace"]
             if only is not None and (ds, tr) not in only:
+                continue
+            if any(re.search(x, ds) for x in args.exclude):
                 continue
             k = (ds, tr, r["policy"], r["cache_pct"])
             if (r["miss"] or "").startswith("NA"):
@@ -259,12 +413,18 @@ def main():
         for _, _, lab in PAIRS:
             rs = [g["rel"] for g in gaps if g["cache_pct"] == pct and g["pair"] == lab
                   and g["rel"] is not None]
-            line += (f" {len(rs):>5} {fmt(mean(rs), 12)} {fmt(med(rs), 11)} {'':>6} {'':>6} |"
-                     if rs else f" {0:>5} {'--':>12} {'--':>11} {'':>6} {'':>6} |")
+            if rs:
+                better = sum(1 for x in rs if x > TIE)
+                worse = sum(1 for x in rs if x < -TIE)
+                line += (f" {len(rs):>5} {fmt(mean(rs), 12)} {fmt(med(rs), 11)}"
+                         f" {100 * better / len(rs):5.0f}% {100 * worse / len(rs):5.0f}% |")
+            else:
+                line += f" {0:>5} {'--':>12} {'--':>11} {'':>6} {'':>6} |"
         print("-" * len(hdr) + "\n" + line)
 
     # ---------------------------------------------------------------- families
-    if not args.no_families and families is not None:
+    fam = {}
+    if not args.no_families:
         stats = {}
         for path in args.csv:
             stats.update(load_trace_stats(path))
@@ -304,6 +464,9 @@ def main():
                         line += f" {'--':>12} {'--':>6} |"
                 print(line)
 
+    # ---------------------------------------------------------------- workload table
+    workload_table(gaps, cells, pcts, fam if not args.no_families else {}, args, metric)
+
     # ---------------------------------------------------------------- top traces
     for pct in pcts:
         for _, _, lab in PAIRS:
@@ -311,7 +474,7 @@ def main():
                         key=lambda g: -g["pp"])
             if not rs:
                 continue
-            base_lab = "S3FIFO" if lab == "LRUFvS3" else "base"
+            base_lab = "base"
             for title, sel in ((f"TOP {args.top}", rs[:args.top]),
                                (f"BOTTOM {args.top}", rs[::-1][:args.top])):
                 if title.startswith("BOTTOM") and (not sel or sel[0]["pp"] >= 0):

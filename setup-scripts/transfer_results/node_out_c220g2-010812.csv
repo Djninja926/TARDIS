@@ -1,0 +1,13 @@
+node,dataset,trace,policy,cache_name,cache_pct,size_bytes,requests,miss,byte_miss,params
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,lru,LRU,1,7662818934308,96680668,0.5934,0.2678,default
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,lru,LRU,10,76628189343083,96680668,0.4854,0.2253,default
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,lru,LRU,0.1,766281893430,96680668,0.6645,0.2865,default
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,s3fifo,S3FIFO-0.1000-2,1,7662818934308,96680668,0.5981,0.2648,default
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,s3fifo,S3FIFO-0.1000-2,10,76628189343083,96680668,0.4921,0.2221,default
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,s3fifo,S3FIFO-0.1000-2,0.1,766281893430,96680668,0.6670,0.2854,default
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,1,7662818934308,96680668,0.5940,0.2657,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=1752264
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,1,7662818934308,96680668,0.6008,0.2662,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=1752264
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,10,76628189343083,96680668,0.4899,0.2229,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=17522642
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,10,76628189343083,96680668,0.4951,0.2229,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=17522642
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,0.1,766281893430,96680668,0.6644,0.2861,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=175226
+node5.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_rnha,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,0.1,766281893430,96680668,0.6723,0.2876,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=175226

@@ -1,0 +1,79 @@
+workload,in_paper_table,cache_pct,policy,mean_rel_reduction_pct,n
+Wiki Upload,True,10,LRUForgive,0.0017,23
+Wiki Upload,True,10,S3FIFOForgive,-0.0025,23
+Wiki Upload,True,1,LRUForgive,0.0023,23
+Wiki Upload,True,1,S3FIFOForgive,-0.0082,23
+Wiki Upload,True,0.1,LRUForgive,0.0278,23
+Wiki Upload,True,0.1,S3FIFOForgive,-0.0815,23
+Wiki Text,True,10,LRUForgive,0.0000,22
+Wiki Text,True,10,S3FIFOForgive,-0.0021,22
+Wiki Text,True,1,LRUForgive,0.0391,22
+Wiki Text,True,1,S3FIFOForgive,-0.0035,22
+Wiki Text,True,0.1,LRUForgive,0.7849,22
+Wiki Text,True,0.1,S3FIFOForgive,0.0099,22
+Meta KV,True,10,LRUForgive,0.0000,3
+Meta KV,True,10,S3FIFOForgive,0.0000,3
+Meta KV,True,1,LRUForgive,0.0000,4
+Meta KV,True,1,S3FIFOForgive,0.0000,4
+Meta KV,True,0.1,LRUForgive,0.0000,4
+Meta KV,True,0.1,S3FIFOForgive,0.0000,4
+Tencent Photo,True,10,LRUForgive,,0
+Tencent Photo,True,10,S3FIFOForgive,,0
+Tencent Photo,True,1,LRUForgive,0.0000,2
+Tencent Photo,True,1,S3FIFOForgive,0.0000,1
+Tencent Photo,True,0.1,LRUForgive,0.0000,2
+Tencent Photo,True,0.1,S3FIFOForgive,0.0000,2
+Tencent Block,True,10,LRUForgive,0.2222,4803
+Tencent Block,True,10,S3FIFOForgive,-0.3879,4803
+Tencent Block,True,1,LRUForgive,0.7792,3611
+Tencent Block,True,1,S3FIFOForgive,-0.1045,3611
+Tencent Block,True,0.1,LRUForgive,1.6606,377
+Tencent Block,True,0.1,S3FIFOForgive,0.0004,377
+Meta CDN,True,10,LRUForgive,0.0000,3
+Meta CDN,True,10,S3FIFOForgive,0.0000,3
+Meta CDN,True,1,LRUForgive,0.0000,3
+Meta CDN,True,1,S3FIFOForgive,0.0000,3
+Meta CDN,True,0.1,LRUForgive,0.0000,3
+Meta CDN,True,0.1,S3FIFOForgive,0.0128,3
+Alibaba Block,True,10,LRUForgive,0.0554,948
+Alibaba Block,True,10,S3FIFOForgive,-0.4964,948
+Alibaba Block,True,1,LRUForgive,0.6466,603
+Alibaba Block,True,1,S3FIFOForgive,0.5244,603
+Alibaba Block,True,0.1,LRUForgive,1.5374,237
+Alibaba Block,True,0.1,S3FIFOForgive,0.6036,237
+Twitter,True,10,LRUForgive,-0.0005,45
+Twitter,True,10,S3FIFOForgive,0.0028,45
+Twitter,True,1,LRUForgive,0.0080,49
+Twitter,True,1,S3FIFOForgive,-0.0004,48
+Twitter,True,0.1,LRUForgive,0.1317,50
+Twitter,True,0.1,S3FIFOForgive,-0.1316,51
+Meta Storage,False,10,LRUForgive,0.0000,5
+Meta Storage,False,10,S3FIFOForgive,0.0000,5
+Meta Storage,False,1,LRUForgive,0.0000,5
+Meta Storage,False,1,S3FIFOForgive,0.0000,5
+Meta Storage,False,0.1,LRUForgive,0.0000,5
+Meta Storage,False,0.1,S3FIFOForgive,0.0000,5
+MSR,False,10,LRUForgive,0.0378,14
+MSR,False,10,S3FIFOForgive,-0.0139,14
+MSR,False,1,LRUForgive,3.2024,14
+MSR,False,1,S3FIFOForgive,0.8465,14
+MSR,False,0.1,LRUForgive,0.0191,9
+MSR,False,0.1,S3FIFOForgive,-0.1986,9
+CloudPhysics,False,10,LRUForgive,0.0466,106
+CloudPhysics,False,10,S3FIFOForgive,-0.8848,106
+CloudPhysics,False,1,LRUForgive,0.1896,104
+CloudPhysics,False,1,S3FIFOForgive,-0.5040,104
+CloudPhysics,False,0.1,LRUForgive,0.1129,64
+CloudPhysics,False,0.1,S3FIFOForgive,0.0809,64
+FIU,False,10,LRUForgive,0.1327,10
+FIU,False,10,S3FIFOForgive,-2.9526,10
+FIU,False,1,LRUForgive,0.1662,7
+FIU,False,1,S3FIFOForgive,0.0107,7
+FIU,False,0.1,LRUForgive,0.1529,2
+FIU,False,0.1,S3FIFOForgive,0.2823,2
+SYSTOR,False,10,LRUForgive,0.0206,6
+SYSTOR,False,10,S3FIFOForgive,-0.0114,6
+SYSTOR,False,1,LRUForgive,0.0047,6
+SYSTOR,False,1,S3FIFOForgive,-0.0000,6
+SYSTOR,False,0.1,LRUForgive,0.0041,6
+SYSTOR,False,0.1,S3FIFOForgive,0.0634,6

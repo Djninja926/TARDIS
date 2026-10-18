@@ -1,0 +1,12 @@
+### metaKV/202206_kv_traces_all.csv tag=emb0 pct=1 sizes=638335089 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=2598326
+[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=2598326] evict_main=46153416 evict_small=110761667 forgive_small=5361869(23.6%) forgive_main=48963151(70.2%) final_emb_count=2598326
+[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=2598326] evicts=160661732 candidates=280635881 qualified=234117585 forgives=119974149(51.2%) final_emb_count=2598326
+### metaKV/202206_kv_traces_all.csv tag=emb1 pct=10 sizes=6383350894 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=25983260
+[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=25983260] evict_main=17325843 evict_small=49030613 forgive_small=88779(0.8%) forgive_main=19881(0.1%) final_emb_count=25983260
+[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=25983260] evicts=77748075 candidates=78237219 qualified=47688502 forgives=489144(1.0%) final_emb_count=25983260
+### metaKV/202206_kv_traces_all.csv tag=emb2 pct=0.1 sizes=63833508 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=259832
+[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=259832] evict_main=72434635 evict_small=255339806 forgive_small=8452569(36.3%) forgive_main=117405838(95.3%) final_emb_count=259832
+[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=259832] evicts=349339421 candidates=567405501 qualified=503256056 forgives=218066080(43.3%) final_emb_count=259832
+### tencentPhoto/tencent_photo2 tag=emb0 pct=1 sizes=127800460309 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=25437647
+[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=25437647] evict_main=206793332 evict_small=909214181 forgive_small=54907814(18.9%) forgive_main=233840327(58.2%) final_emb_count=25437647
+[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=25437647] evicts=1151994771 candidates=2275248014 qualified=1819641921 forgives=1123253243(61.7%) final_emb_count=25437647

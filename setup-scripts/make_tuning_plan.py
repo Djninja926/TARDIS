@@ -9,7 +9,7 @@ MEAN relative miss-ratio reduction over that policy's own baseline on the
 study's training traces. Other parameters stay at their defaults.
 
 HELD-OUT BY FAMILY. Training traces are chosen per dataset by FAMILY (see
-trace_families.py): one representative per chosen family is trained on, the
+trace_names.py): one representative per chosen family is trained on, the
 rest of that family is excluded, and every other family is the test set. A
 random split by trace would leak: many block volumes are near-clones, so a
 "held-out" trace could be a copy of a training trace and the held-out result
@@ -38,7 +38,7 @@ Usage:
 import argparse, csv, json, os, random, sys
 from collections import defaultdict
 
-from trace_families import load_trace_stats, families
+from trace_names import load_trace_stats, families
 from trace_names import read_list
 
 POLICIES = ("lruforgiveembcache", "s3fifoforgive-embcache")

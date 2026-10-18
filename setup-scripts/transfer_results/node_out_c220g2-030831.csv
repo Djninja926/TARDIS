@@ -1,0 +1,13 @@
+node,dataset,trace,policy,cache_name,cache_pct,size_bytes,requests,miss,byte_miss,params
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,lru,LRU,1,1790263659161,45623306,0.3837,0.2094,default
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,lru,LRU,10,17902636591614,45623306,0.3272,0.1755,default
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,lru,LRU,0.1,179026365916,45623306,0.4345,0.2228,default
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,s3fifo,S3FIFO-0.1000-2,1,1790263659161,45623306,0.3829,0.2034,default
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,s3fifo,S3FIFO-0.1000-2,10,17902636591614,45623306,0.3267,0.1709,default
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,s3fifo,S3FIFO-0.1000-2,0.1,179026365916,45623306,0.4287,0.2202,default
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,1,1790263659161,45623306,0.3803,0.2053,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=612596
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,1,1790263659161,45623306,0.3853,0.2043,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=612596
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,10,17902636591614,45623306,0.3261,0.1724,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=6125966
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,10,17902636591614,45623306,0.3288,0.1717,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=6125966
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,0.1,179026365916,45623306,0.4313,0.2212,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=61259
+node4.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,metaCDN,meta_reag,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,0.1,179026365916,45623306,0.4339,0.2213,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=61259

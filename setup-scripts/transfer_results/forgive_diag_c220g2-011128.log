@@ -1,0 +1,3 @@
+### metaKV/202312_kv_traces_all.csv tag=emb0 pct=1 sizes=2567357746 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=9950520
+[0m[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=9950520] evicts=671114305 candidates=735285980 qualified=597040872 forgives=64171675(10.7%) final_emb_count=9950520
+[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=9950520] evict_main=180976538 evict_small=461929425 forgive_small=3675503(4.1%) forgive_main=6625355(6.7%) final_emb_count=9950520
