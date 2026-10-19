@@ -1,6 +1,6 @@
 # TARDIS: Temporal Relationship Sketches for Cache Eviction
 
-This repo holds the cache-eviction evaluation of **TARDIS** (LDOS lab, UT Austin):
+This repo holds the cache-eviction evaluation of **TARDIS** (Learning Directed Operating System Expedition, University of Texas at Austin Chapter):
 the code that runs it and the results it produced. TARDIS is described in the paper
 *TARDIS: A Temporal Relationship Sketch for Online Systems Control*.
 
