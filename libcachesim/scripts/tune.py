@@ -224,8 +224,9 @@ def params_str(p, sep=","):
 # MEMORY. A trial runs up to TUNE_PAR_TRIALS x TUNE_PAR_TRACES simulations at
 # once, and with no request cap some training traces are huge (a 10% sketch
 # table for a 500M-object trace is ~130 GB). Each forgive run reserves its
-# estimated memory from a node-wide budget (80% of RAM) and waits until it
-# fits; a run larger than the whole budget runs alone.
+# estimated memory from a node-wide budget (TUNE_MEM_FRACTION of RAM, 0.8;
+# use about 0.6 when a sweep runs on the same node) and waits until it fits;
+# a run larger than the whole budget runs alone.
 EMB_ENTRY_BYTES = 520        # per sketch-table entry
 OBJ_BYTES = 100              # per unique object: the access counter (never freed) + cache metadata
 
@@ -269,7 +270,7 @@ class Runner:
     def __init__(self, cachesim, work, timeout, ignore_size=False):
         self.cachesim, self.work, self.timeout = cachesim, work, timeout
         self.ignore_size = ignore_size      # IGNORE_OBJ_SIZE=1: sizes are in objects
-        self.budget = MemBudget(int(0.8 * mem_total()))
+        self.budget = MemBudget(int(float(os.environ.get("TUNE_MEM_FRACTION", 0.8)) * mem_total()))
         self._n = 0
         self._lock = threading.Lock()
 
