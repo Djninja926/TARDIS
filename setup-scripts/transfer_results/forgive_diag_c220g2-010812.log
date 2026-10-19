@@ -1,9 +1,0 @@
-### metaCDN/meta_rnha tag=emb0 pct=1 sizes=7662818934308 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=1752264
-[0m[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=1752264] evicts=57077851 candidates=86081700 qualified=53833921 forgives=29003849(53.9%) final_emb_count=1752264
-[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=1752264] evict_main=7712688 evict_small=50139363 forgive_small=2269477(22.7%) forgive_main=19395227(87.3%) final_emb_count=1752264
-### metaCDN/meta_rnha tag=emb1 pct=10 sizes=76628189343083 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=17522642
-[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=17522642] evict_main=9955086 evict_small=35470467 forgive_small=1068352(14.2%) forgive_main=6245658(50.2%) final_emb_count=13843030
-[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=17522642] evicts=44235409 candidates=59186112 qualified=32530087 forgives=14950703(46.0%) final_emb_count=13843030
-### metaCDN/meta_rnha tag=emb2 pct=0.1 sizes=766281893430 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=175226
-[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=175226] evict_main=5128750 evict_small=59846545 forgive_small=836878(9.2%) forgive_main=11412596(87.3%) final_emb_count=175226
-[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=175226] evicts=64193476 candidates=79956366 qualified=48348900 forgives=15762890(32.6%) final_emb_count=175226

@@ -6,3 +6,4 @@ sosp23-s3fifo/
 *.simd
 *.stage1
 results/archive/lruforgive.*
+__pycache__/

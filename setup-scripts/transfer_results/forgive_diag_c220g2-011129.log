@@ -1,3 +1,0 @@
-### tencentPhoto/tencent_photo1 tag=emb0 pct=1 sizes=132402080539 params=lr=0.116698,ctx-speed=1.20038e-07,threshold=0.482896,max-emb-entries=26476352
-[0m[S3FIFOForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 w=16 max_emb=26476352] evict_main=208964740 evict_small=958858059 forgive_small=49281384(16.2%) forgive_main=181358086(50.6%) final_emb_count=26476352
-[LRUForgiveEmbCache lr=0.12 ctx=0.0000 th=0.48 max_emb=26476352] evicts=1210533623 candidates=2271318637 qualified=1813117215 forgives=1060785014(58.5%) final_emb_count=26476352

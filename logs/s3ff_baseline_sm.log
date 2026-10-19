@@ -1,5 +1,0 @@
-nohup: ignoring input
-writing /mydata/tardis/s3ff_baseline_single-manager_20260822_205620.csv (label=single-manager)
-== t=1 (size=512 hp=25) ==
-  s3fifo t=1 rep=1 -> mr=0.7750 tp=0.43
-  s3fifoforgive t=1 rep=1 -> mr=0.7679 tp=0.28

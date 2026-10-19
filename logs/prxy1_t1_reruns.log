@@ -1,7 +1,0 @@
-nohup: ignoring input
-=== run 1 ===
-cachelib PN8facebook8cachelib14CacheAllocatorINS0_20LruForgiveCacheTraitEEE 256 MiB, /mydata/tardis/traces/msr_prxy_1.oracleGeneral, 167.47 hour, runtime 1842.19 sec, 168638963 requests, throughput 0.11 MQPS, miss ratio 0.1997
-=== run 2 ===
-cachelib PN8facebook8cachelib14CacheAllocatorINS0_20LruForgiveCacheTraitEEE 256 MiB, /mydata/tardis/traces/msr_prxy_1.oracleGeneral, 167.47 hour, runtime 1733.00 sec, 168638963 requests, throughput 0.12 MQPS, miss ratio 0.1953
-=== run 3 ===
-cachelib PN8facebook8cachelib14CacheAllocatorINS0_20LruForgiveCacheTraitEEE 256 MiB, /mydata/tardis/traces/msr_prxy_1.oracleGeneral, 167.47 hour, runtime 1525.84 sec, 168638963 requests, throughput 0.13 MQPS, miss ratio 0.1601

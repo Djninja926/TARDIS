@@ -1,9 +1,0 @@
-node,dataset,trace,policy,cache_name,cache_pct,size_bytes,requests,miss,byte_miss,params
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,lru,LRU,1,132402080539,2917228640,0.4533,0.4129,default
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,lru,LRU,10,1324020805395,2917228640,0.2500,0.2169,default
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,lru,LRU,0.1,13240208053,2917228640,0.7003,0.6575,default
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,s3fifo,S3FIFO-0.1000-2,1,132402080539,2917228640,0.3990,0.3583,default
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,s3fifo,S3FIFO-0.1000-2,10,1324020805395,2917228640,0.2399,0.2088,default
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,s3fifo,S3FIFO-0.1000-2,0.1,13240208053,2917228640,0.6642,0.6187,default
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,lruforgiveembcache,LRUForgiveEmbCache-th0.48-lr0.12,1,132402080539,2917228640,0.4165,0.3760,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=26476352
-node7.tardis-apia.ldos-ut-pg0.wisc.cloudlab.us,tencentPhoto,tencent_photo1,s3fifoforgive-embcache,S3FIFOForgiveEmbCache-lr0.12-th0.48,1,132402080539,2917228640,0.4019,0.3612,lr=0.116698;ctx-speed=1.20038e-07;threshold=0.482896;max-emb-entries=26476352
