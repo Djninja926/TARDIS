@@ -37,10 +37,11 @@ tardis/
     result/        all libCacheSim results (default, tuned, borrowed parameters)
     traces.tsv     the exact trace list the sweep ran on
   cachelib/
-    scripts/       CacheLib-era run scripts (single node, multithreaded)
-    result/        CacheLib results
+    scripts/       CacheLib experiments (6 files, below)
+    result/        CacheLib results, with a README per file
   doc/
-    reproduce.md   step-by-step instructions to rerun everything
+    reproduce.md   step-by-step instructions to rerun the libCacheSim results
+    MultithreadedLRUForgive.md   the lab notebook: every experiment, in date order
   requirements.txt Python packages for the scripts
 ```
 
@@ -112,7 +113,9 @@ python analyze.py results_default/merged_all_nodes.csv               # per-datas
 ```
 
 Tuning and the tuned rerun use the same commands; the full sequence is in
-[`doc/reproduce.md`](doc/reproduce.md).
+[`doc/reproduce.md`](doc/reproduce.md). Section 6 there is the paper-style
+rerun: object sizes ignored (`--env IGNORE_OBJ_SIZE=1`, so cache sizes are a
+percent of unique objects) and one tuning study per workload.
 
 | Script | What it does |
 |---|---|
@@ -122,7 +125,7 @@ Tuning and the tuned rerun use the same commands; the full sequence is in
 | `tune.py` | `plan` the tuning studies, `run` them (on a node), turn the results into tuned `params` |
 | `analyze.py` | results per dataset and per workload, default vs tuned, progress and reruns, merging runs |
 | `gen_traces.py` | rebuild the trace list by crawling the CMU mirror and the Wikimedia index |
-| `common.py` | shared code: trace naming, reading simulator output, grouping near-identical traces |
+| `common.py` | shared code: trace naming, reading simulator output, the paper's workload groups, grouping near-identical traces |
 
 ### Evaluation setup
 
@@ -154,14 +157,73 @@ to zero with either setting.
 
 ## How to use CacheLib
 
-The CacheLib implementation is a fork of the SOSP'23 S3-FIFO artifact:
-[Djninja926/cachelib-sosp23, branch `tardis-implementation`](https://github.com/Djninja926/cachelib-sosp23/tree/tardis-implementation).
-It adds LRUForgive and S3FIFOForgive to CacheLib and the multithreaded designs we
-explored (per-thread sharding, a single shared manager, and a log-structured
-background applier).
+The CacheLib implementation is a fork of the SOSP'23 S3-FIFO artifact's CacheLib:
+[Djninja926/cachelib-sosp23](https://github.com/Djninja926/cachelib-sosp23). It adds
+`MMLruForgive` and `MMS3FIFOForgive` and the multithreaded designs we explored:
 
-TODO(Apia): build and run commands for the fork, and which CacheLib results
-reproduce which numbers.
+| Branch | Design |
+|---|---|
+| `jane-perthread` | per-thread state, no shared applier: the design that keeps the gain at 16 threads (the headline) |
+| `tardis-implementation` | one shared embedding manager fed by a log and a single background applier, with adaptive backoff |
+
+### Setup
+
+The fork must sit inside the artifact so `mybench` finds libCacheSim:
+
+```bash
+git clone https://github.com/Thesys-lab/sosp23-s3fifo.git && cd sosp23-s3fifo
+pushd libCacheSim/scripts && bash install_dependency.sh && bash install_libcachesim.sh && popd
+git clone -b jane-perthread https://github.com/Djninja926/cachelib-sosp23.git cachelib-sosp23
+cd cachelib-sosp23/mybench
+bash turboboost.sh disable          # steady throughput (needs root)
+bash build.sh                       # full build; wipes _build/; must print no "FAILED:" lines
+```
+
+`cachelib/scripts/node_setup.sh` does all of this on a fresh CloudLab node,
+including a fix for the fork's broken zstd submodule. Any change to a header in
+`cachelib/allocator/` needs the full `build.sh` (explicit template
+instantiations freeze inlined code; a partial rebuild links stale code).
+
+### Usage
+
+```bash
+./_build/<algo> <trace.oracleGeneral> <cache_MB> <hashpower> <threads> [mode]
+./_build/lruforgive cache-t-00.oracleGeneral 512 25 8 0
+```
+
+`algo` is `lru`, `s3fifo`, `lruforgive` or `s3fifoforgive`. The cache is one
+shared cache of `cache_MB` in total. `hashpower` is log2 of the hash table's
+buckets; we use log2(MB) + 16, plus log2(threads). `mode` 0 (replicated, the
+default) has every thread replay the whole trace, so the cache is scaled with
+the thread count; 1 (shared) splits the trace across threads and keeps the
+cache fixed. The binary prints a miss ratio at checkpoints; the last line is
+the result, and only if the run exited cleanly.
+
+### Running the experiments
+
+```bash
+cd cachelib/scripts
+bash get_traces.sh cache-t-00 msr_proj_0 cluster53 msr_prxy_1
+LABEL=perthread bash run_matrix.sh final        # the headline sweep, about a day
+python analyze.py final /mydata/tardis/results/final_perthread.csv ...
+```
+
+| Script | What it does |
+|---|---|
+| `node_setup.sh` | build the artifact, libCacheSim and the fork on a fresh node (`BRANCH=` picks the design) |
+| `get_traces.sh` | download or convert traces by name (Wikimedia, CMU mirror, synthetic zipf) |
+| `run_matrix.sh` | every single-node experiment, as presets: `final`, `s3ff`, `shared`, `sizesweep`, `subsample`, `bimodality`, `cliff`, `zipf` |
+| `all_traces_worker.sh` | the all-traces 1-thread sweep, one node's share of the trace list |
+| `analyze.py` | the headline tables, per-cell repetition summaries, the all-traces table |
+| `trace_stats.py` | one-hit wonders, skew and hot-set churn of a trace |
+
+[`cachelib/result/README.md`](cachelib/result/README.md) lists every result
+file, the doc section it backs, and the command that regenerates it.
+
+Known limits: the artifact's S3-FIFO is not thread-safe under heavy eviction
+(non-atomic check-then-remove in `S3FIFOList::getEvictionCandidate`), so S3-FIFO
+and S3FIFOForgive run at 1 thread on real traces; and 2-thread runs give a
+broken LRU baseline on every trace, so we report 1, 4, 8 and 16 threads.
 
 ## Traces
 

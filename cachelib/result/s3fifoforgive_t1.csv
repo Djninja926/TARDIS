@@ -1,4 +1,10 @@
 branch,policy,t,rep,miss,tp
+perthread,s3fifo,1,1,0.7750,0.43
+perthread,s3fifoforgive,1,1,0.7680,0.28
+perthread,s3fifo,1,2,0.7750,0.43
+perthread,s3fifoforgive,1,2,0.7684,0.27
+perthread,s3fifo,1,3,0.7750,0.46
+perthread,s3fifoforgive,1,3,0.7679,0.30
 single-manager,s3fifo,1,1,0.7750,0.45
 single-manager,s3fifoforgive,1,1,0.7679,0.34
 single-manager,s3fifo,1,2,0.7750,0.44

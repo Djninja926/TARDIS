@@ -6,7 +6,8 @@ command-line helpers the node worker calls.
   Naming    one rule turns a trace URL into (dataset, trace name)
   Lists     read a trace list ("<dataset>\\t<url>" or bare URLs)
   Parsing   turn cachesim output into result rows
-  Families  group near-identical traces (used by the tuning planner)
+  Workloads group datasets into the paper's workloads (Wiki Upload, Tencent Block, ...)
+  Families  group near-identical traces (the near-copy check on held-out traces)
 
 Naming:
   CMU mirror  .../cacheDatasets/alibabaBlock/new/1M/alibabaBlock_9.oracleGeneral.zst
@@ -82,6 +83,8 @@ def read_list(path):
 # bin/cachesim/main.c prints, after every cell has finished:
 #   <trace> <cache_name> cache size <N><unit>, <n> req, miss ratio <m>, byte miss ratio <b>
 # * no throughput field on this path (sim.c's single-cell line has one: optional)
+# * with --ignore-obj-size 1 the single-cell line has no byte miss ratio (it
+#   would equal the miss ratio): optional, filled with the miss ratio
 # * the size is ONE unit chosen from the first size, truncated, so it is never
 #   used for bytes; exact bytes come from the sizes we passed (fractions times
 #   the working set cachesim logs on stderr)
@@ -93,8 +96,8 @@ COLUMNS = ("node,dataset,trace,policy,cache_name,cache_pct,size_bytes,"
 
 LINE_RE = re.compile(
     r"^(?P<path>\S+)\s+(?P<name>.+?)\s+cache size\s+(?P<size>\d+)(?P<unit>TiB|GiB|MiB|KiB|B)?,\s+"
-    r"(?P<req>\d+)\s+req,\s+miss ratio\s+(?P<miss>[\d.eE+-]+),\s+"
-    r"byte miss ratio\s+(?P<bmiss>[\d.eE+-]+)"
+    r"(?P<req>\d+)\s+req,\s+miss ratio\s+(?P<miss>[\d.eE+-]+)"
+    r"(?:,\s+byte miss ratio\s+(?P<bmiss>[\d.eE+-]+))?"
     r"(?:,\s+throughput\s+[\d.eE+-]+\s+MQPS)?\s*$"
 )
 WSS_RE = re.compile(r"(estimated )?working set size(?: \(([\d.]+) sample ratio\))?:\s*"
@@ -159,7 +162,7 @@ def parse_rows(raw_text, err_text, node, dataset, trace, sizes, pcts, params):
                 if big != pbig and block[j]["size"] != block[j + 1]["size"]:
                     raise ValueError(f"SIZE ORDER MISMATCH in block {b // n} for {tag}")
     return [[node, dataset, trace, normalize_policy(r["name"]), r["name"], pcts[k % n],
-             exact[k % n], r["req"], r["miss"], r["bmiss"], params.replace(",", ";")]
+             exact[k % n], r["req"], r["miss"], r["bmiss"] or r["miss"], params.replace(",", ";")]
             for k, r in enumerate(rows)]
 
 
@@ -172,12 +175,48 @@ def lookup_params(table, dataset, pct, policy):
     return ""
 
 
+# ---------------------------------------------------------------- workloads
+# The paper's workload types. A trace's workload comes from its dataset name
+# (and, for the CMU "wiki" folder, the trace name: wiki_2016u = upload,
+# wiki_2019t = text). First match wins. Workloads after the paper's eight are
+# datasets the paper's table does not have. Tuning runs one study per workload
+# and the analysis tables have one row per workload.
+GROUPS = [
+    ("Wiki Upload",   r"^wikimedia_.*upload", None),
+    ("Wiki Upload",   r"(^|_)wiki($|_)", r"u$"),
+    ("Wiki Text",     r"^wikimedia_.*text", None),
+    ("Wiki Text",     r"(^|_)wiki($|_)", r"t$"),
+    ("Meta KV",       r"metaKV", None),
+    ("Tencent Photo", r"tencentPhoto", None),
+    ("Tencent Block", r"tencentBlock", None),
+    ("Meta CDN",      r"metaCDN", None),
+    ("Alibaba Block", r"alibabaBlock", None),
+    ("Twitter",       r"twitter", None),
+    ("Meta Storage",  r"metaStorage", None),
+    ("MSR",           r"(^|_)msr", None),
+    ("CloudPhysics",  r"cloudphysics", None),
+    ("FIU",           r"(^|_)fiu", None),
+    ("SYSTOR",        r"systor", None),
+]
+PAPER = ["Wiki Upload", "Wiki Text", "Meta KV", "Tencent Photo", "Tencent Block",
+         "Meta CDN", "Alibaba Block", "Twitter"]
+
+
+def group_of(ds, trace):
+    """Workload of a trace, or None for a dataset outside the list."""
+    for label, dre, tre in GROUPS:
+        if re.search(dre, ds) and (tre is None or re.search(tre, trace)):
+            return label
+    return None
+
+
 # ---------------------------------------------------------------- families
 #
-# Some block datasets hold many near-clone volumes. The tuning planner trains on
-# one trace per FAMILY and tests on other families, so a held-out trace is never
-# a copy of a training trace. A trace joins a family (same dataset) when ALL hold
-# against the family's running centroid:
+# Some block datasets hold many near-clone volumes. The tuning planner marks a
+# held-out trace as a NEAR COPY when it shares a family with a training trace,
+# so results can be reported with and without them. A trace joins a family
+# (same first key, the dataset or workload) when ALL hold against the
+# family's running centroid:
 #     requests within REQ_TOL, footprint within FP_TOL (both relative),
 #     LRU miss at 10% within MISS_TOL (absolute).
 

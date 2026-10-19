@@ -67,6 +67,12 @@ together as above. About four days on 8 nodes.
 
 ## 3. Hyperparameter tuning
 
+> The tuning in `result/tuning/` was planned by the earlier version of
+> `tune.py` (in the git history): one study per dataset and size, 100 trials,
+> up to 8 training traces (one per family of near-identical traces), at most
+> 150M requests each. The current `tune.py` plans the paper-style rerun in
+> section 6; the commands are the same.
+
 ```bash
 python tune.py plan ../result/default.csv --list ../traces.tsv
 python orchestrate.py --launch --run tune --plan tune_plan
@@ -74,10 +80,8 @@ python orchestrate.py --collect --run tune
 python tune.py params results_tune/merged_all_nodes.csv
 ```
 
-`tune.py plan` prints which datasets get tuned, with how many training and test
-traces, and writes `tune_plan/`. One study per (dataset, cache size, policy),
-100 trials each. Training traces are one per family of near-identical traces,
-so a held-out trace is never a copy of a training trace. `tune.py params` prints
+`tune.py plan` prints which workloads get tuned, with how many training and test
+traces, and writes `tune_plan/`. `tune.py params` prints
 every study (default vs best score on its training traces, forgive rates, and a
 "mostly off" flag when the gain came from switching forgiveness off) and writes
 `tuned_params.json`. About 18 hours on 8 nodes.
@@ -93,8 +97,7 @@ python analyze.py ../result/default.csv --tuned results_tuned/merged_all_nodes.c
 ```
 
 (`^` continues a line in Windows cmd; use `\` on Linux or macOS.)
-`apply_traces.tsv` already leaves out the full-size Twitter clusters (several take
-over 8 hours per call or run out of memory). Each forgive policy looks up
+Each forgive policy looks up
 `dataset|size|policy` in the parameter file and keeps its defaults if there is no
 entry. About two days on 8 nodes. The last command is the held-out comparison.
 
@@ -112,11 +115,72 @@ python orchestrate.py --launch --run transfer --list transfer_list.tsv ^
 
 (`grep -E 'metaKV/|metaCDN/|tencentPhoto/' ../traces.tsv > transfer_list.tsv` on Linux or macOS.)
 
+## 6. Paper-style rerun (object sizes ignored)
+
+The paper's setup: every object has size 1, so a cache of 1% holds 1% of the
+trace's unique objects. Every trace except the full-size and 100x-sampled
+Twitter clusters (Twitter is represented by `twitter_sample10`, used in full).
+
+```bash
+findstr /v /l /c:"cacheDatasets/twitter/cluster" /c:"cacheDatasets/twitter/sample100/" ..\traces.tsv > traces_objects.tsv
+```
+(`grep -v -e 'cacheDatasets/twitter/cluster' -e 'cacheDatasets/twitter/sample100/' ../traces.tsv > traces_objects.tsv`
+on Linux or macOS; 6,244 traces.)
+
+Tuning only needs to know which traces have results and how long they are,
+and both are the same with or without object sizes (the 1,000-object skip
+rule counts objects either way). So the tuning can be planned from
+`result/default.csv` and run at the same time as the default sweep:
+
+```bash
+# default parameters
+python orchestrate.py --launch --run objdefault --list traces_objects.tsv --weights-from ../result/default.csv ^
+    --env IGNORE_OBJ_SIZE=1 --env CELL_TIMEOUT=86400
+
+# tuning: one study per (workload, size, policy), 125 trials, up to 16 training traces
+python tune.py plan ../result/default.csv --list traces_objects.tsv --outdir objtune_plan
+python orchestrate.py --launch --run objtune --plan objtune_plan --env IGNORE_OBJ_SIZE=1 --env CELL_TIMEOUT=21600
+
+python orchestrate.py --collect --run objdefault
+python orchestrate.py --collect --run objtune
+python tune.py params results_objtune/merged_all_nodes.csv --out obj_tuned_params.json
+
+# tuned parameters on every trace of the tuned workloads
+python orchestrate.py --launch --run objtuned --list objtune_plan/apply_traces.tsv ^
+    --weights-from ../result/default.csv --ship obj_tuned_params.json ^
+    --env IGNORE_OBJ_SIZE=1 --env CELL_TIMEOUT=86400 ^
+    --env PARAMS_FILE=/mydata/tardis/ship/obj_tuned_params.json
+python orchestrate.py --collect --run objtuned
+```
+
+Results, held out, with and without near copies of training traces:
+
+```bash
+python analyze.py results_objtuned/merged_all_nodes.csv --only objtune_plan/test_traces.tsv --table table5_objects
+python analyze.py results_objtuned/merged_all_nodes.csv --only objtune_plan/test_far_traces.tsv --table table5_objects_far
+python analyze.py results_objdefault/merged_all_nodes.csv --tuned results_objtuned/merged_all_nodes.csv --only objtune_plan/test_traces.tsv
+```
+
+How the split works (`tune.py plan`): per workload (Wiki Upload, Tencent Block,
+...), a random third of the traces train, at most 16; the rest are held out.
+Traces with results at every size are preferred, so one training set serves
+every study of the workload. Workloads with fewer than 2 usable traces are not
+tuned. A held-out trace in the same family as a training trace is a *near
+copy*; `test_far_traces.tsv` leaves those out. The tuner reserves each
+simulation's estimated memory from 80% of the node's RAM, so huge training
+traces wait for room instead of running out of memory together.
+
+Traces that are expected to fail at 10% (sketch table too large or too slow):
+both Tencent Photo traces (about 520M unique objects; the 10% sketch table
+alone is about 135 GB) and Meta KV `202312_kv_traces_all` (8.7B requests).
+They are recorded as `NA_FAIL` and the workload is tuned without that size.
+
 ## Worker settings (`--env NAME=VALUE`)
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `SIZES` | `0.1,0.01,0.001` | cache sizes as fractions of the working set (labels 10, 1, 0.1) |
+| `IGNORE_OBJ_SIZE` | 0 | 1 = every object has size 1: sizes are fractions of unique objects and `size_bytes` holds objects |
 | `EMB_MULT` | 5 | sketch table size, in multiples of the objects the cache holds |
 | `MIN_CACHE_OBJS` | 1000 | skip forgive policies below this cache size (objects) |
 | `PARAMS` | none | forgive parameters for every trace; `max-emb-entries=-1` removes the cap |

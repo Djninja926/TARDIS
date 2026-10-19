@@ -35,7 +35,7 @@ WORKLOAD TABLE: the paper's Table 5 layout. Datasets are grouped into workloads
 import argparse, csv, glob, re, statistics, sys
 from collections import defaultdict
 
-from common import BASELINE, POLICIES, read_list
+from common import BASELINE, GROUPS, PAPER, POLICIES, group_of, read_list
 
 # (forgive policy, baseline, label). Each forgive policy is compared only with
 # its own baseline (LRUF vs S3-FIFO was dropped: not a comparison we report).
@@ -79,41 +79,14 @@ def mean(xs):
 # ---------------------------------------------------------------- workload table
 # The paper-style table: mean relative miss-ratio reduction per WORKLOAD GROUP,
 # LRUForgive (vs LRU) and S3FIFOForgive (vs S3-FIFO), one column pair per size.
-# Groups match on the dataset name (and, for the CMU "wiki" folder, the trace
-# name: wiki_2016u = upload, wiki_2019t = text). First match wins. Groups after
-# the rule line are datasets the paper table does not have.
+# Groups match on the dataset name (common.GROUPS). Groups after the rule line
+# are datasets the paper table does not have.
 #
 # VARIANTS: the CMU mirror has several copies of some traces (twitter clusters
 # in full and as sample10 / sample100, alibabaBlock volumes in several
 # subfolders). They share a trace name, so within a group each trace name keeps
-# only the copy with the most requests (the full trace). --keep-variants keeps all.
-GROUPS = [
-    ("Wiki Upload",   r"^wikimedia_.*upload", None),
-    ("Wiki Upload",   r"(^|_)wiki($|_)", r"u$"),
-    ("Wiki Text",     r"^wikimedia_.*text", None),
-    ("Wiki Text",     r"(^|_)wiki($|_)", r"t$"),
-    ("Meta KV",       r"metaKV", None),
-    ("Tencent Photo", r"tencentPhoto", None),
-    ("Tencent Block", r"tencentBlock", None),
-    ("Meta CDN",      r"metaCDN", None),
-    ("Alibaba Block", r"alibabaBlock", None),
-    ("Twitter",       r"twitter", None),
-    ("Meta Storage",  r"metaStorage", None),
-    ("MSR",           r"(^|_)msr", None),
-    ("CloudPhysics",  r"cloudphysics", None),
-    ("FIU",           r"(^|_)fiu", None),
-    ("SYSTOR",        r"systor", None),
-]
-PAPER = ["Wiki Upload", "Wiki Text", "Meta KV", "Tencent Photo", "Tencent Block",
-         "Meta CDN", "Alibaba Block", "Twitter"]
+# only the copy with the most requests (the full trace).
 TABLE_COLS = (("LRUF", "LRUForgive"), ("S3FF", "S3FIFOForgive"))
-
-
-def group_of(ds, trace):
-    for label, dre, tre in GROUPS:
-        if re.search(dre, ds) and (tre is None or re.search(tre, trace)):
-            return label
-    return None
 
 
 def workload_table(gaps, cells, pcts, args, metric):

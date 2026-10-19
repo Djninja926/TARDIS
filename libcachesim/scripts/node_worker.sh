@@ -20,11 +20,19 @@
 # fractional sizes (which also logs the working set), then one forgive call per
 # size, with that size in absolute bytes.
 #
+# OBJECT SIZES. With IGNORE_OBJ_SIZE=1 every call gets --ignore-obj-size 1:
+# each object counts as size 1 (the paper's setup), the working set cachesim
+# logs is then the same number in "bytes" and objects, so every size above
+# (the fractions, the absolute sizes, the cap) is in objects with no other
+# change, and the size_bytes column holds objects.
+#
 # SMALL-CACHE SKIP: forgive cells are recorded as NA_SMALL when the cache would
 # hold fewer than MIN_CACHE_OBJS objects (S3-FIFO paper rule). Baselines still run.
 #
 # Settings (environment; orchestrate.py --env NAME=VALUE):
 #   SIZES            cache sizes as fractions of the working set (0.1,0.01,0.001)
+#   IGNORE_OBJ_SIZE  1 = every object has size 1, so sizes are fractions of the
+#                    unique objects (the paper's setup); 0 = real sizes (0)
 #   EMB_MULT         sketch table, multiple of cache capacity in objects (5)
 #   MIN_CACHE_OBJS   forgive cells skipped below this many objects (1000)
 #   PARAMS           forgive parameters for every trace, e.g. lr=0.1,ctx-speed=1e-6
@@ -108,6 +116,7 @@ SIZES="${SIZES:-0.1,0.01,0.001}"
 # labels: the fraction as a percent (0.1 -> 10, 0.001 -> 0.1)
 PCTS=$(python3 -c "print(','.join(f'{float(s) * 100:g}' for s in '$SIZES'.split(',')))")
 EMB_MULT="${EMB_MULT:-5}"
+IGNORE_OBJ_SIZE="${IGNORE_OBJ_SIZE:-0}"
 MIN_CACHE_OBJS="${MIN_CACHE_OBJS:-1000}"
 NUM_THREAD="${NUM_THREAD:-4}"
 FORGIVE_THREADS="${FORGIVE_THREADS:-2}"
@@ -131,6 +140,8 @@ IFS=',' read -ra PC_ARR <<< "$PCTS"
 
 echo "[$NODE] cachesim=$CACHESIM"
 echo "[$NODE] sizes=$SIZES (pcts=$PCTS) timeout=${CELL_TIMEOUT}s min-cache-objs=$MIN_CACHE_OBJS"
+if [ "$IGNORE_OBJ_SIZE" = 1 ]; then echo "[$NODE] object sizes ignored: sizes are fractions of unique objects"
+else echo "[$NODE] object sizes kept: sizes are fractions of the working set in bytes"; fi
 echo "[$NODE] baselines='$ALGOS_BASE' num-thread=$NUM_THREAD"
 echo "[$NODE] forgive='$ALGOS_EMB' num-thread=$FORGIVE_THREADS emb=${EMB_MULT}x main capacity in objects"
 [ -n "$PARAMS" ] && echo "[$NODE] extra params: '$PARAMS'"
@@ -217,6 +228,7 @@ run_invocation() {  # dataset trace path algos params sizes pcts tag threads
   # default; point that at scratch so thousands of files don't land in $HOME.
   local extra=(--num-thread "$threads" --output "$WORK/.cachesim_out.$tag")
   [ -n "$prm" ] && extra+=(--eviction-params "$prm")
+  [ "$IGNORE_OBJ_SIZE" = 1 ] && extra+=(--ignore-obj-size 1)
 
   timeout "$CELL_TIMEOUT" "$CACHESIM" "$path" oracleGeneral "$algos" "$sizes" \
     "${extra[@]}" > "$raw" 2>"$raw.err" || rc=$?

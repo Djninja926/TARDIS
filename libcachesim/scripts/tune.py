@@ -9,7 +9,9 @@ tune.py - hyperparameter tuning for the forgive policies, in three steps.
   python tune.py params STUDIES.csv                        (your machine)
       Turn the finished studies into tuned_params.json for the tuned sweep.
 
-One STUDY = one (dataset, cache size, forgive policy). Optuna (TPE) searches
+One STUDY = one (workload, cache size, forgive policy), as in the paper: the
+workloads are common.GROUPS (Wiki Upload, Tencent Block, ...; a dataset outside
+the list is its own workload). Optuna (TPE) searches
     lr         0.01 - 0.5    (log)
     ctx-speed  1e-7 - 1e-3   (log)
     threshold  0.3  - 0.95
@@ -18,39 +20,46 @@ baseline on the study's training traces. The defaults (lr=0.2, ctx-speed=0.001,
 threshold=0.4) are always tried first, so the best result is never worse than
 the defaults on the training traces.
 
-HELD-OUT BY FAMILY. Training traces are one representative from each of up to
-TRAIN_MAX families of near-identical traces (common.families); the rest of
-those families is excluded and every other family is the test set, so a
-held-out trace is never a copy of a training trace.
+TRAINING TRACES. Per workload, a random third of its traces, at most TRAIN_MAX
+(16); the rest are held out. The paper used a third; workloads with 48+ traces
+are capped at 16 so a trial (which replays every training trace) stays
+affordable. Traces with results at every size and policy are preferred, so the
+same training set serves every study of the workload. A trace that appears in
+several datasets of one workload (Twitter samples, block volumes in several
+subfolders) counts once, as the copy with the most requests (same rule as the
+analysis); the other copies are "variant" and neither train nor test.
+
+NEAR COPIES. Some block workloads hold many near-identical volumes. A held-out
+trace in the same family (common.families) as a training trace is marked
+near_copy; test_far_traces.tsv leaves those out, so held-out results can be
+reported with and without them.
 
 Plan outputs (tune_plan/):
-  shard_NN.txt       one JSON study per line, one file per node
-  tune_split.tsv     dataset, trace, family, role (train / excluded / test / untuned)
-  apply_traces.tsv   traces to rerun with tuned parameters
-  test_traces.tsv    held-out traces (judge tuning on these)
-  train_traces.tsv   training traces
+  shard_NN.txt         one JSON study per line, one file per node
+  tune_split.tsv       workload, dataset, trace, family, role (train / test /
+                       variant / untuned), near_copy (1 = held-out copy of a training trace)
+  apply_traces.tsv     traces to rerun with tuned parameters (every trace of a tuned workload)
+  test_traces.tsv      held-out traces (judge tuning on these)
+  test_far_traces.tsv  held-out traces that are not near copies
+  train_traces.tsv     training traces
 """
 import argparse, concurrent.futures, csv, json, os, random, subprocess, sys, threading, time
 from collections import defaultdict
 
 from common import (BASELINE, FORGIVE_RATE_RE, LINE_RE, POLICIES, WSS_RE,
-                    families, load_trace_stats, needs_conversion, read_list)
+                    families, group_of, load_trace_stats, needs_conversion, read_list)
 
-# ---- planning choices (the values used for the results in ../result/)
-TRAIN_MAX = 8                # training traces per dataset (one per family)
-MIN_FAMILIES = 2             # fewer families: no honest held-out set, not tuned
+# ---- planning choices
+TRAIN_MAX = 16               # training traces per workload (a third below 48 traces)
 MIN_TRAIN, MIN_TEST = 1, 1   # per (size, policy) study
-MAX_TRAIN_REQUESTS = 150e6   # each trial replays every training trace
 SEED = 1
-# Full-size Twitter clusters are left out of the tuned rerun: several exceed the
-# node's memory or the time limit. Their sampled copies are tuned and rerun.
-APPLY_EXCLUDE = {"twitter"}
 
 # ---- search
 DEFAULTS = {"lr": 0.2, "ctx_speed": 0.001, "threshold": 0.4}
-COLUMNS = ["study_id", "dataset", "cache_pct", "policy", "baseline", "n_train", "n_trials",
-           "n_complete", "default_value", "best_value", "gain_pp_of_rel", "best_params",
-           "default_forgive_rate", "best_forgive_rate", "train_traces", "status", "seconds"]
+COLUMNS = ["study_id", "dataset", "datasets", "cache_pct", "policy", "baseline", "n_train",
+           "n_trials", "n_complete", "default_value", "best_value", "gain_pp_of_rel",
+           "best_params", "default_forgive_rate", "best_forgive_rate", "train_traces",
+           "status", "seconds"]
 
 # ---- params
 OFF_RATIO = 0.2              # best forgive rate below this x default: "mostly off"
@@ -85,87 +94,90 @@ def plan(args):
                     ok.add((r["dataset"], r["trace"], r["cache_pct"], r["policy"]))
                     pcts.add(r["cache_pct"])
     pcts = sorted(pcts, key=pct_order)
-    fam = families(stats)
 
-    by_ds = defaultdict(list)
+    # workload -> trace name -> (dataset, url): one copy per name (most requests)
+    by_wl, variants, datasets = defaultdict(dict), defaultdict(list), defaultdict(set)
     for ds, name, url in read_list(args.list):
-        by_ds[ds].append((name, url))
+        wl = group_of(ds, name) or ds
+        datasets[wl].add(ds)
+        cur = by_wl[wl].get(name)
+        if cur is not None and requests.get((ds, name), 0) <= requests.get((cur[0], name), 0):
+            variants[wl].append((ds, name, url))
+            continue
+        if cur is not None:
+            variants[wl].append((cur[0], name, cur[1]))
+        by_wl[wl][name] = (ds, url)
+
+    # families within each workload, for the near-copy check
+    fam = families({(wl, f"{ds}/{n}"): stats[(ds, n)]
+                    for wl, tr in by_wl.items() for n, (ds, _) in tr.items() if (ds, n) in stats})
 
     studies, split_rows = [], []
-    apply_rows, test_rows, train_rows = [], [], []
-    print(f"{'dataset':>24} | {'traces':>6} {'fams':>5} {'train':>5} {'test':>5} | studies (size:policy)")
+    apply_rows, test_rows, far_rows, train_rows = [], [], [], []
+    print(f"{'workload':>24} | {'traces':>6} {'train':>5} {'test':>5} {'near':>5} | studies (size:policy)")
 
-    for ds in sorted(by_ds, key=lambda d: -len(by_ds[d])):
-        traces = by_ds[ds]
-        url_of = dict(traces)
-        fam_of = {n: fam.get((ds, n), f"{ds}#solo:{n}") for n, _ in traces}
-        members = defaultdict(list)
-        for n, _ in traces:
-            members[fam_of[n]].append(n)
+    for wl in sorted(by_wl, key=lambda w: -len(by_wl[w])):
+        traces = sorted(by_wl[wl].items())
+        fam_of = {n: fam.get((wl, f"{ds}/{n}"), f"{wl}#solo:{ds}/{n}") for n, (ds, _) in traces}
 
         def elig(n):
+            ds = by_wl[wl][n][0]
             return sum(1 for c in pcts for p in POLICIES if (ds, n, c, p) in ok)
 
-        # one candidate per family: most eligible (size, policy) combinations,
-        # within the request cap; ties broken at random
-        cands = []
-        for fid, ms in members.items():
-            pool = [n for n in ms if requests.get((ds, n), 0) <= MAX_TRAIN_REQUESTS and elig(n) > 0]
-            if pool:
-                rng.shuffle(pool)
-                pool.sort(key=lambda n: -elig(n))
-                cands.append((fid, pool[0]))
+        def write_untuned(why):
+            for n, (ds, _) in traces:
+                split_rows.append((wl, ds, n, fam_of[n], "untuned", ""))
+            for ds, n, _ in variants[wl]:
+                split_rows.append((wl, ds, n, "", "untuned", ""))
+            print(f"{wl:>24} | {len(traces):>6} {'-':>5} {'-':>5} {'-':>5} | not tuned ({why})")
 
-        n_fam = len(members)
-        k = min(TRAIN_MAX, n_fam // 2, len(cands))
-        if n_fam < MIN_FAMILIES or k < MIN_TRAIN:
-            for n, _ in traces:
-                split_rows.append((ds, n, fam_of[n], "untuned"))
-            why = f"only {n_fam} families" if n_fam < MIN_FAMILIES else "too few eligible families"
-            print(f"{ds:>24} | {len(traces):>6} {n_fam:>5} {'-':>5} {'-':>5} | not tuned ({why})")
+        pool = [n for n, _ in traces if elig(n) > 0]
+        k = min(TRAIN_MAX, round(len(pool) / 3))
+        if k < MIN_TRAIN or len(pool) - k < MIN_TEST:
+            write_untuned(f"{len(pool)} traces with results")
             continue
-
-        rng.shuffle(cands)
-        cands.sort(key=lambda c: -elig(c[1]))        # prefer broadly-eligible families
-        chosen = cands[:k]
-        train = {rep for _, rep in chosen}
-        train_fams = {fid for fid, _ in chosen}
-        role = {n: "train" if n in train else "excluded" if fam_of[n] in train_fams else "test"
-                for n, _ in traces}
+        rng.shuffle(pool)
+        pool.sort(key=lambda n: -elig(n))     # stable: random among the most eligible
+        train = set(pool[:k])
+        train_fams = {fam_of[n] for n in train}
+        role = {n: "train" if n in train else "test" for n, _ in traces}
+        near = {n: role[n] == "test" and fam_of[n] in train_fams for n, _ in traces}
 
         made = []
         for c in pcts:
             for p in POLICIES:
-                tr = [n for n in train if (ds, n, c, p) in ok]
-                te = [n for n, _ in traces if role[n] == "test" and (ds, n, c, p) in ok]
+                tr = [n for n in sorted(train) if (by_wl[wl][n][0], n, c, p) in ok]
+                te = [n for n, (ds, _) in traces if role[n] == "test" and (ds, n, c, p) in ok]
                 if len(tr) < MIN_TRAIN or len(te) < MIN_TEST:
                     continue
                 studies.append({
-                    "id": f"{ds}|{c}|{p}", "dataset": ds, "pct": c, "frac": float(c) / 100.0,
+                    "id": f"{wl}|{c}|{p}", "dataset": wl, "datasets": sorted(datasets[wl]),
+                    "pct": c, "frac": float(c) / 100.0,
                     "policy": p, "baseline": BASELINE[p], "trials": args.trials,
                     "seed": rng.randrange(1 << 30), "n_test": len(te),
-                    "train": [{"name": n, "url": url_of[n], "requests": requests.get((ds, n), 0)}
-                              for n in sorted(tr)],
+                    "train": [{"name": n, "dataset": by_wl[wl][n][0], "url": by_wl[wl][n][1],
+                               "requests": requests.get((by_wl[wl][n][0], n), 0)} for n in tr],
                 })
                 made.append(f"{c}:{'LRUF' if p.startswith('lru') else 'S3FF'}")
-
         if not made:
-            for n, _ in traces:
-                split_rows.append((ds, n, fam_of[n], "untuned"))
-            print(f"{ds:>24} | {len(traces):>6} {n_fam:>5} {'-':>5} {'-':>5} | not tuned "
-                  f"(no size with {MIN_TRAIN}+ train and {MIN_TEST}+ test results)")
+            write_untuned(f"no size with {MIN_TRAIN}+ train and {MIN_TEST}+ test results")
             continue
 
         n_test = sum(1 for v in role.values() if v == "test")
-        print(f"{ds:>24} | {len(traces):>6} {n_fam:>5} {len(train):>5} {n_test:>5} | {' '.join(made)}")
-        for n, u in traces:
-            split_rows.append((ds, n, fam_of[n], role[n]))
-            if ds not in APPLY_EXCLUDE:
-                apply_rows.append((ds, u))
+        n_near = sum(near.values())
+        print(f"{wl:>24} | {len(traces):>6} {len(train):>5} {n_test:>5} {n_near:>5} | {' '.join(made)}")
+        for n, (ds, u) in traces:
+            split_rows.append((wl, ds, n, fam_of[n], role[n], "1" if near[n] else ""))
+            apply_rows.append((ds, u))
             if role[n] == "test":
                 test_rows.append((ds, u))
-            elif role[n] == "train":
+                if not near[n]:
+                    far_rows.append((ds, u))
+            else:
                 train_rows.append((ds, u))
+        for ds, n, u in variants[wl]:
+            split_rows.append((wl, ds, n, "", "variant", ""))
+            apply_rows.append((ds, u))
 
     if not studies:
         sys.exit("no studies could be planned (have the sweeps for these sizes finished?)")
@@ -186,15 +198,16 @@ def plan(args):
             for s in b:
                 f.write(json.dumps(s) + "\n")
     for name, rows in (("tune_split.tsv", split_rows), ("apply_traces.tsv", apply_rows),
-                       ("test_traces.tsv", test_rows), ("train_traces.tsv", train_rows)):
+                       ("test_traces.tsv", test_rows), ("test_far_traces.tsv", far_rows),
+                       ("train_traces.tsv", train_rows)):
         with open(os.path.join(args.outdir, name), "w", encoding="utf-8", newline="\n") as f:
             for r in rows:
                 f.write("\t".join(r) + "\n")
 
     print(f"\n{len(studies)} studies over {args.nodes} nodes; est. cost per node "
           f"(trials x training requests): " + ", ".join(f"{l / 1e9:.1f}G" for l in load))
-    print(f"tuned rerun: {len(apply_rows)} traces  |  held-out test: {len(test_rows)}  |  "
-          f"train: {len(train_rows)}")
+    print(f"tuned rerun: {len(apply_rows)} traces  |  held-out test: {len(test_rows)} "
+          f"({len(far_rows)} not near copies)  |  train: {len(train_rows)}")
     print(f"wrote {args.outdir}/")
 
 
@@ -208,9 +221,55 @@ def params_str(p, sep=","):
     return f"lr={p['lr']:.6g}{sep}ctx-speed={p['ctx_speed']:.6g}{sep}threshold={p['threshold']:.6g}"
 
 
+# MEMORY. A trial runs up to TUNE_PAR_TRIALS x TUNE_PAR_TRACES simulations at
+# once, and with no request cap some training traces are huge (a 10% sketch
+# table for a 500M-object trace is ~130 GB). Each forgive run reserves its
+# estimated memory from a node-wide budget (80% of RAM) and waits until it
+# fits; a run larger than the whole budget runs alone.
+EMB_ENTRY_BYTES = 520        # per sketch-table entry
+OBJ_BYTES = 100              # per unique object: the access counter (never freed) + cache metadata
+
+
+def mem_total():
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return 1 << 50
+
+
+class MemBudget:
+    """Bytes reserved first come, first served (a big run is never starved)."""
+    def __init__(self, total):
+        self.total = self.free = total
+        self.cv = threading.Condition()
+        self.next_ticket = self.serving = 0
+
+    def acquire(self, n):
+        n = min(n, self.total)
+        with self.cv:
+            me = self.next_ticket
+            self.next_ticket += 1
+            self.cv.wait_for(lambda: self.serving == me and self.free >= n)
+            self.free -= n
+            self.serving += 1
+            self.cv.notify_all()
+        return n
+
+    def release(self, n):
+        with self.cv:
+            self.free += n
+            self.cv.notify_all()
+
+
 class Runner:
-    def __init__(self, cachesim, work, timeout):
+    def __init__(self, cachesim, work, timeout, ignore_size=False):
         self.cachesim, self.work, self.timeout = cachesim, work, timeout
+        self.ignore_size = ignore_size      # IGNORE_OBJ_SIZE=1: sizes are in objects
+        self.budget = MemBudget(int(0.8 * mem_total()))
         self._n = 0
         self._lock = threading.Lock()
 
@@ -219,12 +278,22 @@ class Runner:
             self._n += 1
             return os.path.join(self.work, f".tune_out.{os.getpid()}.{self._n}")
 
-    def run(self, trace, algo, size, eparams=None):
-        """(miss, forgive_rate or None, wss (obj, byte) or None) for one cell."""
+    def run(self, trace, algo, size, eparams=None, mem=0):
+        """(miss, forgive_rate or None, wss (obj, byte) or None) for one cell.
+        mem: estimated bytes this run needs (waits for room in the budget)."""
+        held = self.budget.acquire(mem)
+        try:
+            return self._run(trace, algo, size, eparams)
+        finally:
+            self.budget.release(held)
+
+    def _run(self, trace, algo, size, eparams):
         out = self._tmp()
         cmd = [self.cachesim, trace, "oracleGeneral", algo, str(size), "--num-thread", "1", "--output", out]
         if eparams:
             cmd += ["--eviction-params", eparams]
+        if self.ignore_size:
+            cmd += ["--ignore-obj-size", "1"]
         try:
             pr = subprocess.run(cmd, capture_output=True, text=True, timeout=self.timeout, errors="replace")
         finally:
@@ -282,7 +351,8 @@ def download(url, dest):
 def run_study(st, runner, cache_dir, base_cache, cfg, trials_log):
     t0 = time.time()
     frac, algo, base = st["frac"], st["policy"], st["baseline"]
-    row = {"study_id": st["id"], "dataset": st["dataset"], "cache_pct": st["pct"],
+    datasets = ";".join(st.get("datasets") or [st["dataset"]])
+    row = {"study_id": st["id"], "dataset": st["dataset"], "datasets": datasets, "cache_pct": st["pct"],
            "policy": algo, "baseline": base, "n_trials": 0, "n_complete": 0,
            "default_value": "", "best_value": "", "gain_pp_of_rel": "", "best_params": "",
            "default_forgive_rate": "", "best_forgive_rate": "", "status": "", "seconds": ""}
@@ -290,10 +360,11 @@ def run_study(st, runner, cache_dir, base_cache, cfg, trials_log):
     # training traces: download + baseline (+ working set) once each
     train = []
     for t in st["train"]:
-        path = os.path.join(cache_dir, local_name(st["dataset"], t))
+        ds = t.get("dataset", st["dataset"])
+        path = os.path.join(cache_dir, local_name(ds, t))
         try:
             download(t["url"], path)
-            key = f"{st['dataset']}|{t['name']}|{frac}|{base}"
+            key = f"{ds}|{t['name']}|{frac}|{base}|{'obj' if runner.ignore_size else 'byte'}"
             if key not in base_cache:
                 # fractional size (needs a '.', or cachesim reads it as bytes)
                 bm, _, wss = runner.run(path, base, f"{frac:.10f}".rstrip("0"))
@@ -308,12 +379,13 @@ def run_study(st, runner, cache_dir, base_cache, cfg, trials_log):
         if cap_objs < cfg["min_cache_objs"]:
             log(f"  [{st['id']}] drop {t['name']}: cache holds ~{cap_objs} objects < {cfg['min_cache_objs']}")
             continue
+        cap = max(1, int(cfg["emb_mult"] * frac * b["wss_obj"]))
         train.append({"name": t["name"], "path": path, "base": b["miss"],
-                      "size": max(1, int(b["wss_byte"] * frac)),
-                      "cap": max(1, int(cfg["emb_mult"] * frac * b["wss_obj"]))})
+                      "size": max(1, int(b["wss_byte"] * frac)), "cap": cap,
+                      "mem": cap * EMB_ENTRY_BYTES + b["wss_obj"] * OBJ_BYTES})
     row["n_train"] = len(train)
     row["train_traces"] = ";".join(t["name"] for t in train)
-    if len(train) < 2:
+    if len(train) < MIN_TRAIN:
         row["status"] = "SKIPPED_TOO_FEW_TRACES"
         row["seconds"] = f"{time.time() - t0:.0f}"
         return row
@@ -324,8 +396,8 @@ def run_study(st, runner, cache_dir, base_cache, cfg, trials_log):
 
     def evaluate(p):
         ep = params_str(p)
-        futs = [pool.submit(runner.run, t["path"], algo, t["size"], f"{ep},max-emb-entries={t['cap']}")
-                for t in train]
+        futs = [pool.submit(runner.run, t["path"], algo, t["size"],
+                            f"{ep},max-emb-entries={t['cap']}", t["mem"]) for t in train]
         per, rates = [], []
         for t, f in zip(train, futs):
             miss, fr, _ = f.result()
@@ -410,7 +482,10 @@ def run(args):
     if os.path.exists(args.out):
         with open(args.out, encoding="utf-8", newline="") as f:
             finished = {r["study_id"] for r in csv.DictReader(f)}
-    runner = Runner(args.cachesim, args.work, timeout)
+    ignore = os.environ.get("IGNORE_OBJ_SIZE", "0") == "1"
+    runner = Runner(args.cachesim, args.work, timeout, ignore)
+    log("object sizes " + ("ignored: sizes are fractions of unique objects" if ignore
+                           else "kept: sizes are fractions of the working set in bytes"))
     log(f"{len(studies)} studies in shard, {len(finished & {s['id'] for s in studies})} already done")
 
     for i, st in enumerate(studies):
@@ -421,7 +496,8 @@ def run(args):
             row = run_study(st, runner, cache_dir, base_cache, cfg, trials_log)
         except Exception as e:                      # never let one study kill the shard
             log(f"[{st['id']}] ERROR {e}")
-            row = {"study_id": st["id"], "dataset": st["dataset"], "cache_pct": st["pct"],
+            row = {"study_id": st["id"], "dataset": st["dataset"],
+                   "datasets": ";".join(st.get("datasets") or [st["dataset"]]), "cache_pct": st["pct"],
                    "policy": st["policy"], "baseline": st["baseline"], "status": f"ERROR {e}"[:200]}
         new = not os.path.exists(args.out)
         with open(args.out, "a", encoding="utf-8", newline="") as f:
@@ -432,7 +508,7 @@ def run(args):
         with open(base_path, "w") as f:
             json.dump(base_cache, f)
         # free disk: drop traces no later study in this shard needs
-        needed = {local_name(s["dataset"], t) for s in studies[i + 1:] for t in s["train"]}
+        needed = {local_name(t.get("dataset", s["dataset"]), t) for s in studies[i + 1:] for t in s["train"]}
         for fn in os.listdir(cache_dir):
             if fn not in needed:
                 try:
@@ -474,7 +550,9 @@ def params(args):
         note = ""
         use = status.startswith("OK") and b is not None and r.get("best_params") and (g is None or g > 0)
         if use:
-            table[f"{r['dataset']}|{r['cache_pct']}|{r['policy']}"] = r["best_params"].replace(";", ",")
+            # a workload's parameters apply to every dataset in it
+            for ds in (r.get("datasets") or r["dataset"]).split(";"):
+                table[f"{ds}|{r['cache_pct']}|{r['policy']}"] = r["best_params"].replace(";", ",")
             if fd is not None and fb is not None and fd > 0 and fb < OFF_RATIO * fd:
                 note = "  <- mostly off"
         else:
@@ -488,7 +566,8 @@ def params(args):
 
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(table, fh, indent=1, sort_keys=True)
-    print(f"\n{len(table)} tuned entries -> {args.out}  ({kept_default} studies kept defaults)")
+    print(f"\n{len(table)} tuned entries (dataset|size|policy) -> {args.out}  "
+          f"({kept_default} studies kept defaults)")
     print("values are mean relative miss-ratio reduction (%) on TRAINING traces; "
           "judge tuning on held-out traces with analyze.py --tuned ... --only test_traces.tsv")
 
@@ -503,7 +582,7 @@ def main():
     p.add_argument("csv", nargs="+", help="sweep results (default parameters)")
     p.add_argument("--list", required=True, help="trace list the sweep ran on")
     p.add_argument("--nodes", type=int, default=8)
-    p.add_argument("--trials", type=int, default=100)
+    p.add_argument("--trials", type=int, default=125)
     p.add_argument("--outdir", default="tune_plan")
 
     r = sub.add_parser("run", help="run a shard of studies (on a node; started by node_worker.sh)")

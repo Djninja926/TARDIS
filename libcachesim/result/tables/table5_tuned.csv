@@ -1,0 +1,14 @@
+workload,parameters,LRUForgive 10%,LRUForgive 10% n,LRUForgive 1%,LRUForgive 1% n,LRUForgive 0.1%,LRUForgive 0.1% n,S3FIFOForgive 10%,S3FIFOForgive 10% n,S3FIFOForgive 1%,S3FIFOForgive 1% n,S3FIFOForgive 0.1%,S3FIFOForgive 0.1% n
+Wiki Upload,"tuned, held-out traces",+17.22,14,+11.12,14,+2.25,14,+0.36,14,+0.32,14,-0.00,14
+Wiki Text,"tuned, held-out traces",+8.88,10,+6.35,10,+2.44,10,+0.24,10,+0.45,10,+0.08,10
+Meta KV,borrowed (Wikimedia upload),+0.15,3,+3.42,4,+2.65,3,+0.00,3,+0.28,4,-3.45,3
+Tencent Photo,borrowed (Wikimedia upload),,,+8.04,2,,,,,-0.83,2,,
+Tencent Block,"tuned, held-out traces",+2.80,4764,+3.04,3583,+1.90,359,-0.02,4764,-0.15,3583,+0.01,359
+Meta CDN,borrowed (Wikimedia upload),+0.07,3,+0.69,3,+0.53,3,-0.55,3,-0.51,3,-1.05,3
+Alibaba Block,"tuned, held-out traces",+2.69,906,+4.20,570,+3.22,213,-0.79,906,+0.49,570,+0.39,213
+Twitter,"tuned, held-out traces",-2.71,46,+1.21,44,+0.56,34,-5.61,46,-3.46,44,-0.12,34
+Mean of the 8 workloads,,+4.16,7,+4.76,8,+1.94,7,-0.91,7,-0.43,8,-0.59,7
+MSR,"tuned, held-out traces",+3.01,7,+8.83,7,+1.11,2,+0.00,7,+0.35,7,-0.79,2
+CloudPhysics,"tuned, held-out traces",+3.72,96,+0.78,94,+0.35,54,-0.76,96,-0.12,94,+0.02,54
+FIU,"tuned, held-out traces",+4.87,5,+0.15,2,+0.03,1,-5.67,5,-0.58,2,+0.09,1
+Meta Storage,"tuned, held-out traces",+0.00,3,+0.01,3,+0.00,3,+0.01,3,+0.03,3,+0.04,3
